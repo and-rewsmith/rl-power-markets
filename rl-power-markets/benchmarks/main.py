@@ -41,7 +41,7 @@ if __name__ == "__main__":
 
     running_reward = 0
     for episode in episodes:
-        market.initialize()
+        market.reset()
         for timestep in timesteps:
             market.step_basic_bids()
             state: torch.Tensor = market.obtain_state()
