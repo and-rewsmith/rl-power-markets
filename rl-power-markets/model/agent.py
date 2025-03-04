@@ -37,4 +37,27 @@ class Actor(nn.Module):
 
 
 if __name__ == "__main__":
-    pass
+    # Test parameters
+    obs_size = 4
+    hidden_size = 64
+    num_actions = 2
+    batch_size = 3
+
+    # Initialize networks
+    critic = Critic(obs_size + num_actions, hidden_size)
+    actor = Actor(obs_size, hidden_size, num_actions)
+
+    # Create dummy input data
+    states = torch.randn(batch_size, obs_size)
+    actions = torch.randn(batch_size, num_actions)
+
+    # Test actor forward pass
+    actor_output = actor(states)
+    assert actor_output.shape == (
+        batch_size, num_actions), f"Expected shape {(batch_size, num_actions)}, got {actor_output.shape}"
+
+    # Test critic forward pass
+    critic_output = critic(states, actions)
+    assert critic_output.shape == (batch_size, 1), f"Expected shape {(batch_size, 1)}, got {critic_output.shape}"
+
+    print("Sanity check passed!")
