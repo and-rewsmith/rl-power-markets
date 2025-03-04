@@ -1,5 +1,4 @@
 import torch
-import numpy as np
 
 """
 This file implements a simple market just designed for sanity check.
@@ -7,29 +6,32 @@ This file implements a simple market just designed for sanity check.
 
 
 class SimpleMarket:
-    def __init__(self) -> None:
+    def __init__(self, batch_size: int = 32) -> None:
         # Market parameters
         self.agent_base_cost = 20.0  # $/MWh
         self.competitor_fixed_bid = 40.0  # $/MWh
+        self.batch_size = batch_size
 
         # Define 24-hour demand profile (MW)
         # Simple profile: higher during day, lower at night
-        base_demand = 800
+        base_demand = 800.0
         peak_multiplier = 1.25
         off_peak_multiplier = 0.625
 
-        self.demand = np.array([
+        # Create demand profile and expand for batch dimension
+        demand = torch.tensor([
             *[base_demand * off_peak_multiplier] * 6,    # 0-5: night
             *[base_demand * peak_multiplier] * 4,        # 6-9: morning peak
             *[base_demand] * 6,                          # 10-15: mid-day
             *[base_demand * peak_multiplier] * 4,        # 16-19: evening peak
             *[base_demand] * 4                           # 20-23: evening
         ])
+        self.demand = demand.expand(batch_size, 24)  # Shape: [batch_size, 24]
 
-        # Initialize state vectors (24 hours each)
-        self.u_i = np.zeros(24)  # commitment status
-        self.g_i = np.zeros(24)  # power output
-        self.prices = np.zeros(24)  # market clearing prices
+        # Initialize state vectors with batch dimension
+        self.u_i = torch.zeros(batch_size, 24)      # commitment status
+        self.g_i = torch.zeros(batch_size, 24)      # power output
+        self.prices = torch.zeros(batch_size, 24)   # market clearing prices
 
         # Add these properties
         self.obs_size = 72  # 24 each for u_i, g_i, and prices
@@ -39,46 +41,49 @@ class SimpleMarket:
 
     def reset(self) -> None:
         # Reset state vectors to zero
-        self.u_i.fill(0)
-        self.g_i.fill(0)
-        self.prices.fill(0)
+        self.u_i.zero_()
+        self.g_i.zero_()
+        self.prices.zero_()
 
-    def step_basic_bids(self, multipliers: torch.Tensor) -> float:
-        # Add input validation
-        assert len(multipliers) == 24, f"Expected 24 multipliers, got {len(multipliers)}"
+    def step_basic_bids(self, multipliers: torch.Tensor) -> torch.Tensor:
+        # Input validation
+        assert multipliers.shape == (
+            self.batch_size, 24), f"Expected shape ({self.batch_size}, 24), got {multipliers.shape}"
         assert (multipliers >= 1.0).all(), "All multipliers must be >= 1.0"
+        # TODO: fix assert statement
 
-        # Convert multipliers to numpy if needed
-        if isinstance(multipliers, torch.Tensor):
-            multipliers = multipliers.detach().numpy()
+        # Calculate agent's bids for all hours and batches
+        agent_bids = self.agent_base_cost * multipliers  # Shape: [batch_size, 24]
+        # TODO: add assert statement
 
-        total_profit = 0.0
+        # Market clearing (using broadcasting)
+        agent_wins = agent_bids < self.competitor_fixed_bid  # Shape: [batch_size, 24]
+        # TODO: add assert statement
 
-        # Clear market for each hour
-        for h in range(24):
-            # Calculate agent's bid
-            agent_bid = self.agent_base_cost * multipliers[h]
+        # Update state vectors using masks
+        self.u_i = agent_wins.float()
+        self.g_i = self.demand * agent_wins.float()
+        self.prices = torch.where(agent_wins, agent_bids,
+                                  torch.full_like(agent_bids, self.competitor_fixed_bid))
+        # TODO: add assert statements
 
-            # Market clearing
-            if agent_bid < self.competitor_fixed_bid:
-                # Agent wins
-                self.u_i[h] = 1
-                self.g_i[h] = self.demand[h]
-                self.prices[h] = agent_bid
-                # Calculate profit = (price - cost) * quantity
-                hour_profit = (agent_bid - self.agent_base_cost) * self.demand[h]
-            else:
-                # Competitor wins
-                self.u_i[h] = 0
-                self.g_i[h] = 0
-                self.prices[h] = self.competitor_fixed_bid
-                hour_profit = 0.0
+        # Calculate profits
+        profits = torch.where(
+            agent_wins,
+            (agent_bids - self.agent_base_cost) * self.demand,
+            torch.zeros_like(agent_bids)
+        )
+        # TODO: add assert statement
 
-            total_profit += hour_profit
+        # Sum profits across hours for each batch
+        total_profits = profits.sum(dim=1)
+        # TODO: add assert statement
 
-        return total_profit
+        return total_profits
 
     def obtain_state(self) -> torch.Tensor:
-        # Concatenate state vectors [u_i, g_i, prices] into tensor
-        state = np.concatenate([self.u_i, self.g_i, self.prices])
-        return torch.FloatTensor(state)
+        # Concatenate along hour dimension, maintaining batch dimension
+        # Shape: [batch_size, 72]
+        out = torch.cat([self.u_i, self.g_i, self.prices], dim=1)
+        # TODO: add assert statement
+        return out
