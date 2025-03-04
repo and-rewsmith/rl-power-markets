@@ -1,8 +1,8 @@
 import torch
 import wandb
 
-from model.agent import Critic, Actor
-from benchmarks.markets.simple import SimpleMarket
+from rl_power_markets.model.agent import Critic, Actor
+from rl_power_markets.benchmarks.markets.simple import SimpleMarket
 
 """
 This file functions as the harness that is parameterized by market type.
