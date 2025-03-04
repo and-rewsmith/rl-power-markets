@@ -18,7 +18,7 @@ def initialize_wandb() -> None:
     )
 
 
-LEARNING_RATE = 0.001
+LEARNING_RATE = 0.0001
 DISCOUNT = 0.7
 ACTOR_HIDDEN_SIZE = 64
 CRITIC_HIDDEN_SIZE = 64
@@ -37,14 +37,17 @@ if __name__ == "__main__":
 
     actor = Actor(obs_size=market.obs_size, hidden_size=ACTOR_HIDDEN_SIZE, num_actions=market.num_actions)
     critic = Critic(obs_size=market.obs_size + market.num_actions, hidden_size=CRITIC_HIDDEN_SIZE)
-    actor_and_critic_params = list(actor.parameters()) + list(critic.parameters())
-    optimizer = torch.optim.Adam(actor_and_critic_params, lr=LEARNING_RATE)
+    optimizer_critic = torch.optim.Adam(critic.parameters(), lr=LEARNING_RATE)
+    optimizer_actor = torch.optim.Adam(actor.parameters(), lr=LEARNING_RATE)
 
     running_reward = torch.zeros(market.batch_size, 1)
     for episode in episodes:
         market.reset()
         print(f"Episode {episode}")
         for timestep in timesteps:
+            optimizer_actor.zero_grad()
+            optimizer_critic.zero_grad()
+
             state: torch.Tensor = market.obtain_state().detach()
             assert state.shape == (market.batch_size, market.obs_size)
 
@@ -67,7 +70,7 @@ if __name__ == "__main__":
             assert new_critic_value.shape == (market.batch_size, 1)
 
             td_error = reward + (
-                0.99 * new_critic_value.detach()
+                DISCOUNT * new_critic_value.detach()
             ) - critic_value
             assert td_error.shape == (market.batch_size, 1)
 
@@ -77,9 +80,20 @@ if __name__ == "__main__":
             average_loss = loss.mean()
             assert average_loss.shape == ()
 
-            optimizer.zero_grad()
-            average_loss.mean().backward()
-            optimizer.step()
+            average_loss.backward(retain_graph=True)
+            optimizer_actor.zero_grad()
+
+            # save all critic grads
+            critic_grads = [p.grad for p in critic.parameters()]
+
+            # backprop to max value
+            (-critic_value.mean()).backward()
+            optimizer_actor.step()
+
+            # restore critic grads
+            for p, grad in zip(critic.parameters(), critic_grads):
+                p.grad = grad
+            optimizer_critic.step()
 
             wandb.log({
                 "loss": average_loss.item(),

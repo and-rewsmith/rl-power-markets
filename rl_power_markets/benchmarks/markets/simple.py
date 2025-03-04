@@ -64,6 +64,8 @@ class SimpleMarket:
 
         # Calculate agent bids by applying multipliers to base cost
         agent_bids = self.agent_base_cost * multipliers
+        print(f"Agent bids: {agent_bids[0]}")
+        input()
         assert agent_bids.shape == (self.batch_size, self.num_hours)
 
         # Determine which hours the agent wins based on competitor's fixed bid
