@@ -46,7 +46,7 @@ class SimpleMarket:
         self.num_actions = self.num_hours  # one multiplier per hour
 
         self.num_episodes = 1000
-        self.num_timesteps = 100
+        self.num_timesteps = 30
         self.episodes = range(self.num_episodes)
         self.timesteps = range(self.num_timesteps)
 
@@ -91,7 +91,7 @@ class SimpleMarket:
         total_profits = profits.sum(dim=1)
         assert total_profits.shape == (self.batch_size,)
 
-        return total_profits
+        return self.obtain_state(), total_profits.unsqueeze(1)
 
     def obtain_state(self) -> torch.Tensor:
         out = torch.cat([self.u_i, self.g_i, self.prices], dim=1)

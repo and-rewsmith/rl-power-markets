@@ -32,7 +32,8 @@ class Actor(nn.Module):
             nn.ReLU(),
             nn.Linear(hidden_size, hidden_size),
             nn.ReLU(),
-            nn.Linear(hidden_size, num_actions)
+            nn.Linear(hidden_size, num_actions),
+            nn.ReLU()  # squash this so nonneg
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
