@@ -40,27 +40,38 @@ if __name__ == "__main__":
     actor_and_critic_params = list(actor.parameters()) + list(critic.parameters())
     optimizer = torch.optim.Adam(actor_and_critic_params, lr=LEARNING_RATE)
 
-    running_reward = 0
+    running_reward = torch.zeros(market.batch_size)
     for episode in episodes:
         market.reset()
         for timestep in timesteps:
             market.step_basic_bids()
             state: torch.Tensor = market.obtain_state()
+            assert state.shape == (market.batch_size, market.obs_size)
 
             action = actor(state)
+            assert action.shape == (market.batch_size, market.num_actions)
+
             critic_value = critic(state, action)
+            assert critic_value.shape == (market.batch_size,)
 
             new_state, reward = market.step(action)
             running_reward += reward
+            assert new_state.shape == (market.batch_size, market.obs_size)
+            assert reward.shape == (market.batch_size,)
+            assert running_reward.shape == (market.batch_size,)
 
             new_action = actor(new_state)
             new_critic_value = critic(new_state, new_action)
+            assert new_action.shape == (market.batch_size, market.num_actions)
+            assert new_critic_value.shape == (market.batch_size,)
 
             td_error = reward + (
                 0.99 * new_critic_value.detach()
             ) - critic_value
+            assert td_error.shape == (market.batch_size,)
 
             loss = td_error ** 2
+            assert loss.shape == (market.batch_size,)
 
             optimizer.zero_grad()
             loss.backward()
