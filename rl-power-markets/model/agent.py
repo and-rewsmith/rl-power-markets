@@ -2,6 +2,10 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+"""
+This file implements the agent from the paper.
+"""
+
 
 class Critic(nn.Module):
     def __init__(self, obs_size: int, hidden_size: int):

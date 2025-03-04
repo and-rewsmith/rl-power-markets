@@ -1,5 +1,9 @@
 import torch
 
+"""
+This file implements a simple market just designed for sanity check.
+"""
+
 
 class SimpleMarket:
     def __init__(self) -> None:

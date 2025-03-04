@@ -4,7 +4,9 @@ import wandb
 from model.agent import Critic, Actor
 from benchmarks.markets.simple import SimpleMarket
 
-# TODO: run market with dummy agents and main agent
+"""
+This file functions as the harness that is parameterized by market type.
+"""
 
 
 def initialize_wandb() -> None:
