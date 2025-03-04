@@ -46,7 +46,7 @@ class SimpleMarket:
         self.num_actions = self.num_hours  # one multiplier per hour
 
         self.num_episodes = 1000
-        self.num_timesteps = 100
+        self.num_timesteps = 30
         self.episodes = range(self.num_episodes)
         self.timesteps = range(self.num_timesteps)
 
@@ -57,13 +57,15 @@ class SimpleMarket:
         # Reset prices to competitor's fixed bid
         self.prices.fill_(self.competitor_fixed_bid)
 
-    def step(self, multipliers: torch.Tensor) -> torch.Tensor:
+    def step(self, multipliers: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         # Validate input multipliers
         assert multipliers.shape == (self.batch_size, self.num_hours)
         assert (multipliers >= 1.0).all()
 
         # Calculate agent bids by applying multipliers to base cost
         agent_bids = self.agent_base_cost * multipliers
+        print(f"Agent bids: {agent_bids[0]}")
+        input()
         assert agent_bids.shape == (self.batch_size, self.num_hours)
 
         # Determine which hours the agent wins based on competitor's fixed bid
@@ -91,7 +93,7 @@ class SimpleMarket:
         total_profits = profits.sum(dim=1)
         assert total_profits.shape == (self.batch_size,)
 
-        return total_profits
+        return self.obtain_state(), total_profits.unsqueeze(1)
 
     def obtain_state(self) -> torch.Tensor:
         out = torch.cat([self.u_i, self.g_i, self.prices], dim=1)
