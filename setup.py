@@ -4,7 +4,7 @@ with open('requirements.txt') as f:
     required = f.read().splitlines()
 
 setup(
-    name='rl-power-markets',
+    name='rl_power_markets',
     version='0.1.0',
     packages=find_packages(),
     install_requires=required,
