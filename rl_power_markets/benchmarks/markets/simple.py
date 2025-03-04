@@ -36,7 +36,7 @@ class SimpleMarket:
         self.g_i = torch.zeros(self.batch_size, self.num_hours)
         assert self.g_i.shape == (self.batch_size, self.num_hours)
 
-        self.prices = torch.zeros(self.batch_size, self.num_hours)
+        self.prices = torch.full((self.batch_size, self.num_hours), self.competitor_fixed_bid)
         assert self.prices.shape == (self.batch_size, self.num_hours)
 
         # State space dimensions
@@ -51,12 +51,13 @@ class SimpleMarket:
         self.timesteps = range(self.num_timesteps)
 
     def reset(self) -> None:
-        # Reset state vectors to zero
+        # Reset state vectors
         self.u_i.zero_()
         self.g_i.zero_()
-        self.prices.zero_()
+        # Reset prices to competitor's fixed bid
+        self.prices.fill_(self.competitor_fixed_bid)
 
-    def step_basic_bids(self, multipliers: torch.Tensor) -> torch.Tensor:
+    def step(self, multipliers: torch.Tensor) -> torch.Tensor:
         # Validate input multipliers
         assert multipliers.shape == (self.batch_size, self.num_hours)
         assert (multipliers >= 1.0).all()

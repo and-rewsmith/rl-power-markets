@@ -44,7 +44,6 @@ if __name__ == "__main__":
     for episode in episodes:
         market.reset()
         for timestep in timesteps:
-            market.step_basic_bids()
             state: torch.Tensor = market.obtain_state()
             assert state.shape == (market.batch_size, market.obs_size)
 
