@@ -57,7 +57,7 @@ class SimpleMarket:
         # Reset prices to competitor's fixed bid
         self.prices.fill_(self.competitor_fixed_bid)
 
-    def step(self, multipliers: torch.Tensor) -> torch.Tensor:
+    def step(self, multipliers: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         # Validate input multipliers
         assert multipliers.shape == (self.batch_size, self.num_hours)
         assert (multipliers >= 1.0).all()
