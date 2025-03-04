@@ -7,18 +7,18 @@ This file implements a simple market just designed for sanity check.
 
 class SimpleMarket:
     def __init__(self, batch_size: int = 32) -> None:
+        self.batch_size = batch_size
+        self.num_hours = 24  # Number of hours in a day
+
         # Market parameters
         self.agent_base_cost = 20.0  # $/MWh
         self.competitor_fixed_bid = 40.0  # $/MWh
-        self.batch_size = batch_size
 
-        # Define 24-hour demand profile (MW)
-        # Simple profile: higher during day, lower at night
+        # Define demand profile
         base_demand = 800.0
         peak_multiplier = 1.25
         off_peak_multiplier = 0.625
 
-        # Create demand profile and expand for batch dimension
         demand = torch.tensor([
             *[base_demand * off_peak_multiplier] * 6,    # 0-5: night
             *[base_demand * peak_multiplier] * 4,        # 6-9: morning peak
@@ -26,18 +26,29 @@ class SimpleMarket:
             *[base_demand * peak_multiplier] * 4,        # 16-19: evening peak
             *[base_demand] * 4                           # 20-23: evening
         ])
-        self.demand = demand.expand(batch_size, 24)  # Shape: [batch_size, 24]
+        self.demand = demand.expand(self.batch_size, self.num_hours)
+        assert self.demand.shape == (self.batch_size, self.num_hours)
 
-        # Initialize state vectors with batch dimension
-        self.u_i = torch.zeros(batch_size, 24)      # commitment status
-        self.g_i = torch.zeros(batch_size, 24)      # power output
-        self.prices = torch.zeros(batch_size, 24)   # market clearing prices
+        # Initialize state vectors
+        self.u_i = torch.zeros(self.batch_size, self.num_hours)
+        assert self.u_i.shape == (self.batch_size, self.num_hours)
 
-        # Add these properties
-        self.obs_size = 72  # 24 each for u_i, g_i, and prices
-        self.num_actions = 24  # one multiplier per hour
-        self.episodes = range(1000)  # or whatever episode count you want
-        self.timesteps = range(100)  # or whatever timestep count you want
+        self.g_i = torch.zeros(self.batch_size, self.num_hours)
+        assert self.g_i.shape == (self.batch_size, self.num_hours)
+
+        self.prices = torch.zeros(self.batch_size, self.num_hours)
+        assert self.prices.shape == (self.batch_size, self.num_hours)
+
+        # State space dimensions
+        self.state_dim_per_var = self.num_hours
+        self.num_state_vars = 3  # u_i, g_i, and prices
+        self.obs_size = self.state_dim_per_var * self.num_state_vars
+        self.num_actions = self.num_hours  # one multiplier per hour
+
+        self.num_episodes = 1000
+        self.num_timesteps = 100
+        self.episodes = range(self.num_episodes)
+        self.timesteps = range(self.num_timesteps)
 
     def reset(self) -> None:
         # Reset state vectors to zero
@@ -46,44 +57,42 @@ class SimpleMarket:
         self.prices.zero_()
 
     def step_basic_bids(self, multipliers: torch.Tensor) -> torch.Tensor:
-        # Input validation
-        assert multipliers.shape == (
-            self.batch_size, 24), f"Expected shape ({self.batch_size}, 24), got {multipliers.shape}"
-        assert (multipliers >= 1.0).all(), "All multipliers must be >= 1.0"
-        # TODO: fix assert statement
+        # Validate input multipliers
+        assert multipliers.shape == (self.batch_size, self.num_hours)
+        assert (multipliers >= 1.0).all()
 
-        # Calculate agent's bids for all hours and batches
-        agent_bids = self.agent_base_cost * multipliers  # Shape: [batch_size, 24]
-        # TODO: add assert statement
+        # Calculate agent bids by applying multipliers to base cost
+        agent_bids = self.agent_base_cost * multipliers
+        assert agent_bids.shape == (self.batch_size, self.num_hours)
 
-        # Market clearing (using broadcasting)
-        agent_wins = agent_bids < self.competitor_fixed_bid  # Shape: [batch_size, 24]
-        # TODO: add assert statement
+        # Determine which hours the agent wins based on competitor's fixed bid
+        agent_wins = agent_bids < self.competitor_fixed_bid
+        assert agent_wins.shape == (self.batch_size, self.num_hours)
 
-        # Update state vectors using masks
+        # Update market state variables
         self.u_i = agent_wins.float()
         self.g_i = self.demand * agent_wins.float()
         self.prices = torch.where(agent_wins, agent_bids,
                                   torch.full_like(agent_bids, self.competitor_fixed_bid))
-        # TODO: add assert statements
+        assert self.u_i.shape == (self.batch_size, self.num_hours)
+        assert self.g_i.shape == (self.batch_size, self.num_hours)
+        assert self.prices.shape == (self.batch_size, self.num_hours)
 
-        # Calculate profits
+        # Calculate profits: (bid - cost) * demand when agent wins, 0 otherwise
         profits = torch.where(
             agent_wins,
             (agent_bids - self.agent_base_cost) * self.demand,
             torch.zeros_like(agent_bids)
         )
-        # TODO: add assert statement
+        assert profits.shape == (self.batch_size, self.num_hours)
 
-        # Sum profits across hours for each batch
+        # Sum profits across all hours
         total_profits = profits.sum(dim=1)
-        # TODO: add assert statement
+        assert total_profits.shape == (self.batch_size,)
 
         return total_profits
 
     def obtain_state(self) -> torch.Tensor:
-        # Concatenate along hour dimension, maintaining batch dimension
-        # Shape: [batch_size, 72]
         out = torch.cat([self.u_i, self.g_i, self.prices], dim=1)
-        # TODO: add assert statement
+        assert out.shape == (self.batch_size, self.obs_size)
         return out
