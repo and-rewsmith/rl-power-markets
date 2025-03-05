@@ -29,8 +29,8 @@ def initialize_wandb() -> None:
 
 
 # Hyperparameters
-LR_ACTOR = 0.0001
-LR_CRITIC = 0.001
+LR_ACTOR = 0.000001
+LR_CRITIC = 0.0001
 GAMMA = 0.7
 TAU = 0.005
 BUFFER_SIZE = 100000
@@ -133,7 +133,7 @@ if __name__ == "__main__":
                 # Compute target Q value
                 with torch.no_grad():
                     target_actions = actor_target(next_states)
-                    target_q = critic_target(next_states, target_actions)
+                    target_q = critic_target(next_states, target_actions).detach()
                     target_value = rewards + GAMMA * target_q
                 assert target_value.shape == (BATCH_SIZE, 1)
 
@@ -144,6 +144,7 @@ if __name__ == "__main__":
 
                 optimizer_critic.zero_grad()
                 critic_loss.backward()
+                torch.nn.utils.clip_grad_norm_(critic.parameters(), max_norm=1.0)
                 optimizer_critic.step()
 
                 # Update actor
@@ -152,6 +153,7 @@ if __name__ == "__main__":
 
                 optimizer_actor.zero_grad()
                 actor_loss.backward()
+                torch.nn.utils.clip_grad_norm_(actor.parameters(), max_norm=1.0)
                 optimizer_actor.step()
 
                 # Soft update targets

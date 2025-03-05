@@ -36,7 +36,7 @@ class Actor(nn.Module):
             nn.Tanh()  # squash this so nonneg
         )
         self.vertical_scaling_factor = 1
-        self.horizontal_scaling_factor = 1
+        self.horizontal_scaling_factor = 100
         self.vertical_shift = 2
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
