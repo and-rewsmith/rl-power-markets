@@ -5,6 +5,8 @@ import numpy as np
 import gymnasium as gym
 import random
 from collections import deque
+import os
+from datetime import datetime
 
 # Hyperparameters
 ENV = 'Pendulum-v1'
@@ -15,6 +17,10 @@ TAU = 0.005
 BUFFER_SIZE = int(1e6)
 BATCH_SIZE = 64
 EPISODES = 200
+EVAL_EPISODES = 5
+RENDER_EPISODES = 2
+SAVE_DIR = 'saved_models'
+os.makedirs(SAVE_DIR, exist_ok=True)
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -98,6 +104,9 @@ critic_optimizer = optim.Adam(critic.parameters(), lr=LR_CRITIC)
 replay_buffer = ReplayBuffer()
 
 # Training loop
+best_reward = float('-inf')
+best_weights = None
+
 for episode in range(EPISODES):
     state, info = env.reset()
     done = False
@@ -137,5 +146,35 @@ for episode in range(EPISODES):
             soft_update(actor_target, actor)
 
     print(f"Episode {episode}, Reward: {episode_reward:.2f}")
+
+env.close()
+
+# Add evaluation and rendering of best model
+input("\nRendering final model performance...")
+env = gym.make(ENV, render_mode="human")
+
+# Save final weights
+timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+save_path = os.path.join(SAVE_DIR, f'ddpg_final_{timestamp}.pth')
+torch.save({
+    'actor_state_dict': actor.state_dict(),
+    'critic_state_dict': critic.state_dict(),
+}, save_path)
+
+for episode in range(RENDER_EPISODES):
+    state, _ = env.reset()
+    done = False
+    episode_reward = 0
+
+    while not done:
+        with torch.no_grad():
+            state_tensor = torch.FloatTensor(state).unsqueeze(0).to(device)
+            action = actor(state_tensor).cpu().data.numpy()[0]
+        next_state, reward, terminated, truncated, _ = env.step(action)
+        done = terminated or truncated
+        state = next_state
+        episode_reward += reward
+
+    print(f"Render Episode {episode}, Reward: {episode_reward:.2f}")
 
 env.close()
