@@ -105,7 +105,7 @@ replay_buffer = ReplayBuffer()
 
 # Training loop
 best_reward = float('-inf')
-best_weights = None
+episode_rewards = []  # Track all rewards
 
 for episode in range(EPISODES):
     state, info = env.reset()
@@ -145,7 +145,15 @@ for episode in range(EPISODES):
             soft_update(critic_target, critic)
             soft_update(actor_target, actor)
 
-    print(f"Episode {episode}, Reward: {episode_reward:.2f}")
+    episode_rewards.append(episode_reward)
+    if episode_reward > best_reward:
+        best_reward = episode_reward
+        print(f"Episode {episode}, New Best Reward: {best_reward:.2f}")
+    else:
+        print(f"Episode {episode}, Reward: {episode_reward:.2f}, Best: {best_reward:.2f}")
+
+print(f"\nTraining finished! Final Best Reward: {best_reward:.2f}")
+print(f"Average of last 10 episodes: {np.mean(episode_rewards[-10:]):.2f}")
 
 env.close()
 
