@@ -64,13 +64,13 @@ class SimpleMarket:
 
         # Calculate agent bids by applying multipliers to base cost
         agent_bids = self.agent_base_cost * multipliers
-        print(f"Agent bids: {agent_bids[0]}")
+        # print(f"Agent bids: {agent_bids[0]}")
         assert agent_bids.shape == (self.batch_size, self.num_hours)
 
         # Determine which hours the agent wins based on competitor's fixed bid
         agent_wins = agent_bids < self.competitor_fixed_bid
         assert agent_wins.shape == (self.batch_size, self.num_hours)
-        print(f"Agent wins: {agent_wins[0]}")
+        # print(f"Agent wins: {agent_wins[0]}")
 
         # Update market state variables
         self.u_i = agent_wins.float()
@@ -88,7 +88,7 @@ class SimpleMarket:
             torch.zeros_like(agent_bids)
         )
         assert profits.shape == (self.batch_size, self.num_hours)
-        print(f"Profits: {profits[0]}")
+        # print(f"Profits: {profits[0]}")
         # input()
 
         # Sum profits across all hours

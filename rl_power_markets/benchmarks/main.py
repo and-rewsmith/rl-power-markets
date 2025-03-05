@@ -142,15 +142,8 @@ if __name__ == "__main__":
                 assert current_q.shape == (BATCH_SIZE, 1)
                 critic_loss = torch.nn.functional.mse_loss(current_q, target_value.detach())
 
-                # print(states)
-                # print(current_q)
-                # print(target_value)
-                # print(critic_loss)
-                # input()
-
                 optimizer_critic.zero_grad()
                 critic_loss.backward()
-                # clip gradients
                 torch.nn.utils.clip_grad_norm_(critic.parameters(), max_norm=1.0)
                 optimizer_critic.step()
 
@@ -160,7 +153,6 @@ if __name__ == "__main__":
 
                 optimizer_actor.zero_grad()
                 actor_loss.backward()
-                # clip gradients
                 torch.nn.utils.clip_grad_norm_(actor.parameters(), max_norm=1.0)
                 optimizer_actor.step()
 
