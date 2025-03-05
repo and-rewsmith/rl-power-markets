@@ -33,12 +33,15 @@ class Actor(nn.Module):
             nn.Linear(hidden_size, hidden_size),
             nn.ReLU(),
             nn.Linear(hidden_size, num_actions),
-            nn.Sigmoid()  # squash this so nonneg
+            nn.Tanh()  # squash this so nonneg
         )
-        self.scaling_factor = 2
+        self.vertical_scaling_factor = 1
+        self.horizontal_scaling_factor = 10000
+        self.vertical_shift = 2
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        result: torch.Tensor = self.net(x) * self.scaling_factor
+        result: torch.Tensor = self.vertical_shift + self.vertical_scaling_factor * \
+            self.net(x / self.horizontal_scaling_factor)
         return result
 
 

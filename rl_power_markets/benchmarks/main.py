@@ -20,9 +20,9 @@ def initialize_wandb() -> None:
 
 LEARNING_RATE = 0.0001
 DISCOUNT = 0.7
-ACTOR_HIDDEN_SIZE = 64
+ACTOR_HIDDEN_SIZE = 256
 CRITIC_HIDDEN_SIZE = 64
-BATCH_SIZE = 32
+BATCH_SIZE = 1
 
 
 if __name__ == "__main__":
@@ -49,13 +49,14 @@ if __name__ == "__main__":
             optimizer_critic.zero_grad()
 
             state: torch.Tensor = market.obtain_state().detach()
+            print(f"State: {state[0]}")
             assert state.shape == (market.batch_size, market.obs_size)
 
             action = actor(state)
-            action = 1 + action
+            action = action
             assert action.shape == (market.batch_size, market.num_actions)
 
-            critic_value = critic(state, action)
+            critic_value = critic(state, action.detach())
             assert critic_value.shape == (market.batch_size, 1)
 
             new_state, reward = market.step(action)
@@ -65,7 +66,7 @@ if __name__ == "__main__":
             assert running_reward.shape == (market.batch_size, 1)
 
             new_action = actor(new_state)
-            new_critic_value = critic(new_state, new_action)
+            new_critic_value = critic(new_state, new_action.detach())
             assert new_action.shape == (market.batch_size, market.num_actions)
             assert new_critic_value.shape == (market.batch_size, 1)
 
@@ -80,25 +81,23 @@ if __name__ == "__main__":
             average_loss = loss.mean()
             assert average_loss.shape == ()
 
-            average_loss.backward(retain_graph=True)
-            optimizer_actor.zero_grad()
-
-            # save all critic grads
-            critic_grads = [p.grad for p in critic.parameters()]
-
-            # backprop to max value
-            (-critic_value.mean()).backward()
-            optimizer_actor.step()
-
-            # restore critic grads
-            for p, grad in zip(critic.parameters(), critic_grads):
-                p.grad = grad
+            optimizer_critic.zero_grad()
+            average_loss.backward()
             optimizer_critic.step()
 
+            optimizer_actor.zero_grad()
+            actor_loss = -critic(state, actor(state)).mean()
+            actor_loss.backward()
+            optimizer_actor.step()
+
+            l2_norm_actor_grad = sum(p.grad.norm() for p in actor.parameters())
+            l2_norm_critic_grad = sum(p.grad.norm() for p in critic.parameters())
             wandb.log({
                 "loss": average_loss.item(),
                 "reward": reward.mean().item(),
                 "critic_value": critic_value.mean().item(),
                 "new_critic_value": new_critic_value.mean().item(),
                 "running_reward": running_reward.mean().item(),
+                "l2_norm_actor_grad": l2_norm_actor_grad.item(),
+                "l2_norm_critic_grad": l2_norm_critic_grad.item(),
             })
