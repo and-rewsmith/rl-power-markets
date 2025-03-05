@@ -98,6 +98,7 @@ if __name__ == "__main__":
     optimizer_actor = torch.optim.Adam(actor.parameters(), lr=LR_ACTOR)
 
     replay_buffer = ReplayBuffer(market)
+    max_reward_so_far = float('-inf')
 
     for episode in episodes:
         market.reset()
@@ -168,4 +169,5 @@ if __name__ == "__main__":
                     "train_reward": rewards.mean().item(),
                 })
 
-        print(f"Episode {episode}, Reward: {episode_reward}")
+        max_reward_so_far = max(max_reward_so_far, episode_reward)
+        print(f"Episode {episode}, Reward: {episode_reward:.2f}, Max Reward: {max_reward_so_far:.2f}")
