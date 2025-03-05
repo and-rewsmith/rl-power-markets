@@ -18,7 +18,8 @@ def initialize_wandb() -> None:
     )
 
 
-LEARNING_RATE = 0.0001
+LR_ACTOR = 0.00001
+LR_CRITIC = 0.0001
 DISCOUNT = 0.7
 ACTOR_HIDDEN_SIZE = 256
 CRITIC_HIDDEN_SIZE = 64
@@ -37,8 +38,8 @@ if __name__ == "__main__":
 
     actor = Actor(obs_size=market.obs_size, hidden_size=ACTOR_HIDDEN_SIZE, num_actions=market.num_actions)
     critic = Critic(obs_size=market.obs_size + market.num_actions, hidden_size=CRITIC_HIDDEN_SIZE)
-    optimizer_critic = torch.optim.Adam(critic.parameters(), lr=LEARNING_RATE)
-    optimizer_actor = torch.optim.Adam(actor.parameters(), lr=LEARNING_RATE)
+    optimizer_critic = torch.optim.Adam(critic.parameters(), lr=LR_CRITIC)
+    optimizer_actor = torch.optim.Adam(actor.parameters(), lr=LR_ACTOR)
 
     running_reward = torch.zeros(market.batch_size, 1)
     for episode in episodes:
