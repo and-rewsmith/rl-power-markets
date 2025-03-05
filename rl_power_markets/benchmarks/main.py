@@ -40,13 +40,13 @@ CRITIC_HIDDEN_SIZE = 256
 
 
 class ReplayBuffer:
-    def __init__(self, market):
-        self.buffer = deque(maxlen=BUFFER_SIZE)
+    def __init__(self, market: SimpleMarket) -> None:
+        self.buffer: deque[tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]] = deque(maxlen=BUFFER_SIZE)
         self.batch_size = market.batch_size
         self.obs_size = market.obs_size
         self.num_actions = market.num_actions
 
-    def add(self, state, action, reward, next_state):
+    def add(self, state: torch.Tensor, action: torch.Tensor, reward: torch.Tensor, next_state: torch.Tensor) -> None:
         # Store single items from the batch
         for i in range(self.batch_size):
             self.buffer.append((
@@ -56,7 +56,7 @@ class ReplayBuffer:
                 next_state[i]
             ))
 
-    def sample(self):
+    def sample(self) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         batch = random.sample(self.buffer, BATCH_SIZE)
         # Stack individual tensors
         state = torch.stack([b[0] for b in batch])
@@ -71,7 +71,7 @@ class ReplayBuffer:
         return state, action, reward, next_state
 
 
-def soft_update(target, source, tau):
+def soft_update(target: torch.nn.Module, source: torch.nn.Module, tau: float) -> None:
     for target_param, source_param in zip(target.parameters(), source.parameters()):
         target_param.data.copy_(tau * source_param.data + (1.0 - tau) * target_param.data)
 
@@ -102,7 +102,7 @@ if __name__ == "__main__":
     for episode in episodes:
         market.reset()
         state = market.obtain_state()
-        episode_reward = 0
+        episode_reward: float = 0
 
         for timestep in timesteps:
             # Get action and add exploration noise
