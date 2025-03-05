@@ -15,7 +15,7 @@ class SimpleMarket:
         self.competitor_fixed_bid = 40.0  # $/MWh
 
         # Define demand profile
-        base_demand = 800.0
+        base_demand = 1.0
         peak_multiplier = 1.25
         off_peak_multiplier = 0.625
 

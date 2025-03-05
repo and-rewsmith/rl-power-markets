@@ -1,5 +1,9 @@
+import random
+
 import torch
 import wandb
+import numpy as np
+from collections import deque
 
 from rl_power_markets.model.agent import Critic, Actor
 from rl_power_markets.benchmarks.markets.simple import SimpleMarket
@@ -13,22 +17,67 @@ def initialize_wandb() -> None:
     wandb.init(
         project="rl-power-markets",
         config={
-            "architecture": "Simple",
+            "architecture": "DDPG",
+            "lr_actor": LR_ACTOR,
+            "lr_critic": LR_CRITIC,
+            "batch_size": BATCH_SIZE,
+            "buffer_size": BUFFER_SIZE,
+            "tau": TAU,
+            "gamma": GAMMA,
         }
     )
 
 
-LR_ACTOR = 0.00001
-LR_CRITIC = 0.0001
-DISCOUNT = 0.7
+# Hyperparameters
+LR_ACTOR = 0.0001
+LR_CRITIC = 0.001
+GAMMA = 0.7
+TAU = 0.005
+BUFFER_SIZE = 100000
+BATCH_SIZE = 64
 ACTOR_HIDDEN_SIZE = 256
-CRITIC_HIDDEN_SIZE = 64
-BATCH_SIZE = 1
+CRITIC_HIDDEN_SIZE = 256
+
+
+class ReplayBuffer:
+    def __init__(self, market):
+        self.buffer = deque(maxlen=BUFFER_SIZE)
+        self.batch_size = market.batch_size
+        self.obs_size = market.obs_size
+        self.num_actions = market.num_actions
+
+    def add(self, state, action, reward, next_state):
+        # Store single items from the batch
+        for i in range(self.batch_size):
+            self.buffer.append((
+                state[i],
+                action[i],
+                reward[i],
+                next_state[i]
+            ))
+
+    def sample(self):
+        batch = random.sample(self.buffer, BATCH_SIZE)
+        # Stack individual tensors
+        state = torch.stack([b[0] for b in batch])
+        action = torch.stack([b[1] for b in batch])
+        reward = torch.stack([b[2] for b in batch])
+        next_state = torch.stack([b[3] for b in batch])
+
+        assert state.shape == (BATCH_SIZE, self.obs_size)
+        assert action.shape == (BATCH_SIZE, self.num_actions)
+        assert reward.shape == (BATCH_SIZE, 1)
+        assert next_state.shape == (BATCH_SIZE, self.obs_size)
+        return state, action, reward, next_state
+
+
+def soft_update(target, source, tau):
+    for target_param, source_param in zip(target.parameters(), source.parameters()):
+        target_param.data.copy_(tau * source_param.data + (1.0 - tau) * target_param.data)
 
 
 if __name__ == "__main__":
     torch.manual_seed(42)
-
     device = torch.device("cuda" if torch.cuda.is_available() else "mps")
     initialize_wandb()
 
@@ -36,69 +85,85 @@ if __name__ == "__main__":
     episodes = market.episodes
     timesteps = market.timesteps
 
+    # Initialize networks
     actor = Actor(obs_size=market.obs_size, hidden_size=ACTOR_HIDDEN_SIZE, num_actions=market.num_actions)
+    actor_target = Actor(obs_size=market.obs_size, hidden_size=ACTOR_HIDDEN_SIZE, num_actions=market.num_actions)
+    actor_target.load_state_dict(actor.state_dict())
+
     critic = Critic(obs_size=market.obs_size + market.num_actions, hidden_size=CRITIC_HIDDEN_SIZE)
+    critic_target = Critic(obs_size=market.obs_size + market.num_actions, hidden_size=CRITIC_HIDDEN_SIZE)
+    critic_target.load_state_dict(critic.state_dict())
+
     optimizer_critic = torch.optim.Adam(critic.parameters(), lr=LR_CRITIC)
     optimizer_actor = torch.optim.Adam(actor.parameters(), lr=LR_ACTOR)
 
-    running_reward = torch.zeros(market.batch_size, 1)
+    replay_buffer = ReplayBuffer(market)
+
     for episode in episodes:
         market.reset()
-        print(f"Episode {episode}")
+        state = market.obtain_state()
+        episode_reward = 0
+
         for timestep in timesteps:
-            optimizer_actor.zero_grad()
-            optimizer_critic.zero_grad()
-
-            state: torch.Tensor = market.obtain_state().detach()
-            print(f"State: {state[0]}")
-            assert state.shape == (market.batch_size, market.obs_size)
-
+            # Get action and add exploration noise
             action = actor(state)
-            action = action
+            noise = torch.normal(0, 0.1, size=action.shape)
+            action = torch.clamp(action + noise, min=1.0)  # Ensure multiplier >= 1.0
             assert action.shape == (market.batch_size, market.num_actions)
 
-            critic_value = critic(state, action.detach())
-            assert critic_value.shape == (market.batch_size, 1)
-
-            new_state, reward = market.step(action)
-            running_reward += reward
-            assert new_state.shape == (market.batch_size, market.obs_size)
+            # Step environment
+            next_state, reward = market.step(action)
+            assert next_state.shape == (market.batch_size, market.obs_size)
             assert reward.shape == (market.batch_size, 1)
-            assert running_reward.shape == (market.batch_size, 1)
 
-            new_action = actor(new_state)
-            new_critic_value = critic(new_state, new_action.detach())
-            assert new_action.shape == (market.batch_size, market.num_actions)
-            assert new_critic_value.shape == (market.batch_size, 1)
+            # Store transition
+            replay_buffer.add(state, action, reward, next_state)
+            episode_reward += reward.mean().item()
+            state = next_state.detach()
 
-            td_error = reward + (
-                DISCOUNT * new_critic_value.detach()
-            ) - critic_value
-            assert td_error.shape == (market.batch_size, 1)
-
-            loss = td_error ** 2
-            assert loss.shape == (market.batch_size, 1)
-
-            average_loss = loss.mean()
-            assert average_loss.shape == ()
-
-            optimizer_critic.zero_grad()
-            average_loss.backward()
-            optimizer_critic.step()
-
-            optimizer_actor.zero_grad()
-            actor_loss = -critic(state, actor(state)).mean()
-            actor_loss.backward()
-            optimizer_actor.step()
-
-            l2_norm_actor_grad = sum(p.grad.norm() for p in actor.parameters())
-            l2_norm_critic_grad = sum(p.grad.norm() for p in critic.parameters())
             wandb.log({
-                "loss": average_loss.item(),
-                "reward": reward.mean().item(),
-                "critic_value": critic_value.mean().item(),
-                "new_critic_value": new_critic_value.mean().item(),
-                "running_reward": running_reward.mean().item(),
-                "l2_norm_actor_grad": l2_norm_actor_grad.item(),
-                "l2_norm_critic_grad": l2_norm_critic_grad.item(),
+                "episode_reward": episode_reward,
             })
+
+            # Train if enough samples
+            if len(replay_buffer.buffer) > BATCH_SIZE:
+                # Sample from replay buffer
+                states, actions, rewards, next_states = replay_buffer.sample()
+
+                # Compute target Q value
+                with torch.no_grad():
+                    target_actions = actor_target(next_states)
+                    target_q = critic_target(next_states, target_actions)
+                    target_value = rewards + GAMMA * target_q
+                assert target_value.shape == (BATCH_SIZE, 1)
+
+                # Update critic
+                current_q = critic(states.detach(), actions.detach())
+                assert current_q.shape == (BATCH_SIZE, 1)
+                critic_loss = torch.nn.functional.mse_loss(current_q, target_value.detach())
+
+                optimizer_critic.zero_grad()
+                critic_loss.backward()
+                optimizer_critic.step()
+
+                # Update actor
+                actor_actions = actor(states.detach())
+                actor_loss = -critic(states.detach(), actor_actions).mean()
+
+                optimizer_actor.zero_grad()
+                actor_loss.backward()
+                optimizer_actor.step()
+
+                # Soft update targets
+                soft_update(critic_target, critic, TAU)
+                soft_update(actor_target, actor, TAU)
+
+                # Logging
+                wandb.log({
+                    "critic_loss": critic_loss.item(),
+                    "actor_loss": actor_loss.item(),
+                    "train_q_value": current_q.mean().item(),
+                    "train_reward": rewards.mean().item(),
+                })
+
+        print(f"Episode {episode}, Reward: {episode_reward}")
