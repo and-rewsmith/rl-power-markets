@@ -45,7 +45,7 @@ class SimpleMarket:
         self.obs_size = self.state_dim_per_var * self.num_state_vars
         self.num_actions = self.num_hours  # one multiplier per hour
 
-        self.num_episodes = 1000
+        self.num_episodes = 100000
         self.num_timesteps = 30
         self.episodes = range(self.num_episodes)
         self.timesteps = range(self.num_timesteps)
@@ -55,7 +55,7 @@ class SimpleMarket:
         self.u_i.zero_()
         self.g_i.zero_()
         # Reset prices to competitor's fixed bid
-        self.prices.fill_(self.competitor_fixed_bid)
+        self.prices.fill_(0)
 
     def step(self, multipliers: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         # Validate input multipliers
@@ -89,7 +89,7 @@ class SimpleMarket:
         )
         assert profits.shape == (self.batch_size, self.num_hours)
         print(f"Profits: {profits[0]}")
-        input()
+        # input()
 
         # Sum profits across all hours
         total_profits = profits.sum(dim=1)
