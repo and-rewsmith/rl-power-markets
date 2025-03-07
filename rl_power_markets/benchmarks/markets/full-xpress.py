@@ -5,24 +5,23 @@ import torch
 num_hours = 24
 H = range(num_hours)
 num_blocks = 5
-batch_size = 32
+
+# Define the baseline demand curve (higher during peak hours, lower off-peak)
+# Increased demand to ensure all generators need to turn on
+base_demand_profile = [
+    20000, 19500, 19000, 18500, 18000, 17500, 18000, 20000, 22000, 24000, 25000, 26000,
+    27000, 26500, 26000, 25500, 25000, 24500, 24000, 23500, 23000, 22000, 21000, 20500
+]
+
+# Define elasticities (how much price drops for each additional block)
+base_price = 120  # £/MWh for first block
+price_step = 30   # Drop per block
+num_blocks = 3
 
 generators = {
     1: {
-        "a": 18431.0,    # a_1 in £/h
-        "b": 5.5,          # b_1 in £/MWh
-        "c": 0.0002,       # c_1 in £/(MW^2·h)
-        "CSU": 4000000.0,  # C^U_1
-        "CSD": 800000.0,   # C^D_1
-        "g_min": 3292,    # g_min^1
-        "g_max": 6584,    # g_max^1
-        "RU": 1317,        # RU_1
-        "RD": 1317,        # RD_1
-        "UT": 24,          # UT_1
-        "DT": 24,          # DT_1
-        "u0": 1,           # initial on/off 
-        "g0": 5268         # initial output in MW if on
-    },
+        "a": 18431.0, "b": 5.5, "c": 0.0002, "CSU": 4000000.0, "CSD": 800000.0, "g_min": 3292, "g_max": 6584, "RU": 1317, "RD": 1317, "UT": 24, "DT": 24, "u0": 1, "g0": 5268
+        },
     2: {
         "a": 17005.0, "b": 30.0, "c": 0.0007, "CSU": 325000.0, "CSD": 28500.0, "g_min": 2880, "g_max": 5760, "RU": 1152, "RD": 1152, "UT": 20, "DT": 20, "u0": 1, "g0": 4608
     },
@@ -45,6 +44,43 @@ generators = {
 
 # Strategic bidding parameters (k=1 for competitive behavior)
 k = {i: {h: 1 for h in H} for i in generators}
+
+# Set strategic generator to 5
+strategic_gen = 5
+k[strategic_gen] = {h: 1 for h in H}  # In RL setting, the agent would choose these k values strategically
+
+# # Example demand blocks for 24 hours
+# demand_blocks = {
+#     h: [
+#         {"lambdaD": 120, "d_max": 15000}, # pay 120 £/MWh for first 15000 MW
+#         {"lambdaD": 80,  "d_max": 10000}, # pay 80 £/MWh for next 10000 MW
+#         {"lambdaD": 40,  "d_max": 5000},  # pay 40 £/MWh for next 5000 MW
+#     ]
+#     for h in H
+# }
+
+# assert len(demand_blocks) == num_hours
+
+# Generate blocks for each hour
+demand_blocks = {}
+
+for h in H:
+    base_demand = base_demand_profile[h]
+    blocks = []
+    
+    # Create demand blocks with higher willingness to pay
+    # This ensures the market needs to turn on more expensive generators
+    for b in range(num_blocks):
+        # Adjusted to create larger blocks that will require more generators
+        max_demand = base_demand * (0.7 / (b + 1))
+        marginal_price = base_price - b * price_step
+        
+        blocks.append({
+            "lambdaD": marginal_price,
+            "d_max": max_demand
+        })
+    
+    demand_blocks[h] = blocks
 
 model = xp.problem('full market')
 
@@ -109,18 +145,6 @@ assert len(g_blocks) == len(generators)
 assert len(g_blocks[1]) == num_hours
 assert len(g_blocks[1][0]) == num_blocks
 
-# Example demand blocks for 24 hours
-demand_blocks = {
-    h: [
-        {"lambdaD": 120, "d_max": 15000}, # pay 120 £/MWh for first 15000 MW
-        {"lambdaD": 80,  "d_max": 10000}, # pay 80 £/MWh for next 10000 MW
-        {"lambdaD": 40,  "d_max": 5000},  # pay 40 £/MWh for next 5000 MW
-    ]
-    for h in H
-}
-
-assert len(demand_blocks) == num_hours
-
 # Demand variables (one per block)
 d = {
     h: [
@@ -155,7 +179,7 @@ objective = (
     # Generation costs: variable + no-load + startup/shutdown
     xp.Sum(
         xp.Sum(
-            lambdaG[i][b] * g_blocks[i][h][b]  # Variable cost
+            lambdaG[i][b] * g_blocks[i][h][b] * k[i][h] # Variable cost
             for b in range(num_blocks)
         ) + generators[i]["a"] * u[i][h]        # No-load cost
         for i in generators for h in H
@@ -186,23 +210,16 @@ for h in H:
     for c in range(len(demand_blocks[h])):
         print(f"Demand block {c}: {model.getSolution(d[h][c]):.1f} MW")
 
-# Step 2: Store binary variable solutions
+# Store binary solutions from MIP for use in the LP model
 print("\nStoring binary variable solutions...")
 binary_solutions = {}
 for i in generators:
     for h in H:
-        try:
-            binary_solutions[(i, h, 'u')] = model.getSolution(u[i][h])
-            binary_solutions[(i, h, 'su')] = model.getSolution(su[i][h])
-            binary_solutions[(i, h, 'sd')] = model.getSolution(sd[i][h])
-        except Exception as e:
-            print(f"Error getting solution for generator {i}, hour {h}: {e}")
-            # Default values if error
-            binary_solutions[(i, h, 'u')] = 0
-            binary_solutions[(i, h, 'su')] = 0
-            binary_solutions[(i, h, 'sd')] = 0
+        binary_solutions[(i, h, 'u')] = model.getSolution(u[i][h])
+        binary_solutions[(i, h, 'su')] = model.getSolution(su[i][h])
+        binary_solutions[(i, h, 'sd')] = model.getSolution(sd[i][h])
 
-# Step 3: Create a new continuous model with fixed binary variables
+# Create LP model with fixed binary variables for price determination
 print("\nCreating new continuous model...")
 cont_model = xp.problem('continuous market')
 
@@ -311,7 +328,7 @@ cont_objective = (
 
 cont_model.setObjective(cont_objective, sense=xp.minimize)
 
-# Step 4: Solve the continuous problem
+# Solve LP with fixed binary variables to get dual values
 print("Solving continuous problem...")
 cont_model.solve()
 
@@ -319,32 +336,15 @@ cont_model.solve()
 print("\nLP Results:")
 print("Objective value:", cont_model.getObjVal())
 
-# Step 5: Get market prices (using marginal generator approach)
+# Calculate market prices from dual values or marginal generator costs
 print("\nMarket Prices:")
 market_prices = {}
 for h in H:
-    try:
-        # Try using the row number (this worked in simple-xpress.py)
-        dual = cont_model.getDual(h)
-        
-        # If dual is zero, use marginal generator approach
-        if abs(dual) < 0.001:
-            # Use marginal generator approach
-            max_cost = 0
-            for i in generators:
-                for b in range(num_blocks):
-                    if cont_model.getSolution(cont_g_blocks[i][h][b]) > 0.001:  # Block is producing
-                        if lambdaG[i][b] > max_cost:
-                            max_cost = lambdaG[i][b]
-            
-            market_prices[h] = max_cost
-            print(f"Hour {h}: {max_cost:.2f} £/MWh (using marginal generator cost)")
-        else:
-            market_prices[h] = dual
-            print(f"Hour {h}: {dual:.2f} £/MWh (using row number)")
-    except Exception as e:
-        print(f"Hour {h}: Error with row number - {e}")
-        
+    # Try using the row number
+    dual = cont_model.getDuals(h)
+    
+    # If dual is zero, use marginal generator approach
+    if abs(dual) < 0.001:
         # Use marginal generator approach
         max_cost = 0
         for i in generators:
@@ -355,8 +355,11 @@ for h in H:
         
         market_prices[h] = max_cost
         print(f"Hour {h}: {max_cost:.2f} £/MWh (using marginal generator cost)")
+    else:
+        market_prices[h] = dual
+        print(f"Hour {h}: {dual:.2f} £/MWh (using row number)")
 
-# Step 6: Calculate generator 5's profit
+# Calculate profit for strategic generator (Generator 5)
 strategic_gen = 5
 profit = 0
 for h in H:
@@ -364,8 +367,9 @@ for h in H:
     quantity = sum(model.getSolution(g_blocks[strategic_gen][h][b]) for b in range(num_blocks))
     revenue = market_prices[h] * quantity
     
-    # Costs
-    gen_cost = sum(lambdaG[strategic_gen][b] / k[strategic_gen][h] * model.getSolution(g_blocks[strategic_gen][h][b]) 
+    # Costs - use true costs (without k) for profit calculation
+    # The k factor only affects the bid, not the actual cost to the generator
+    gen_cost = sum(lambdaG[strategic_gen][b] * model.getSolution(g_blocks[strategic_gen][h][b]) 
                   for b in range(num_blocks))
     no_load_cost = generators[strategic_gen]["a"] * model.getSolution(u[strategic_gen][h])
     startup_cost = generators[strategic_gen]["CSU"] * model.getSolution(su[strategic_gen][h])
