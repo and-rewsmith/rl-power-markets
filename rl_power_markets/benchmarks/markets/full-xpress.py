@@ -112,9 +112,9 @@ assert len(g_blocks[1][0]) == num_blocks
 # Example demand blocks for 24 hours
 demand_blocks = {
     h: [
-        {"lambdaD": 120, "d_max": 50000}, # pay 120 £/MWh for first 50 MW
-        {"lambdaD": 80,  "d_max": 30000}, # pay 80 £/MWh for next 30 MW
-        {"lambdaD": 20,  "d_max": 20000}, # pay 40 £/MWh for next 20 MW
+        {"lambdaD": 120, "d_max": 15000}, # pay 120 £/MWh for first 15000 MW
+        {"lambdaD": 80,  "d_max": 10000}, # pay 80 £/MWh for next 10000 MW
+        {"lambdaD": 40,  "d_max": 5000},  # pay 40 £/MWh for next 5000 MW
     ]
     for h in H
 }
@@ -171,7 +171,6 @@ objective = (
 )
 
 model.setObjective(objective, sense=xp.minimize)
-
 model.solve()
 
 # Print results
@@ -186,3 +185,195 @@ for h in H:
         print(f"Generator {i}: {total_gen:.1f} MW, Status: {status} {startup} {shutdown}")
     for c in range(len(demand_blocks[h])):
         print(f"Demand block {c}: {model.getSolution(d[h][c]):.1f} MW")
+
+# Step 2: Store binary variable solutions
+print("\nStoring binary variable solutions...")
+binary_solutions = {}
+for i in generators:
+    for h in H:
+        try:
+            binary_solutions[(i, h, 'u')] = model.getSolution(u[i][h])
+            binary_solutions[(i, h, 'su')] = model.getSolution(su[i][h])
+            binary_solutions[(i, h, 'sd')] = model.getSolution(sd[i][h])
+        except Exception as e:
+            print(f"Error getting solution for generator {i}, hour {h}: {e}")
+            # Default values if error
+            binary_solutions[(i, h, 'u')] = 0
+            binary_solutions[(i, h, 'su')] = 0
+            binary_solutions[(i, h, 'sd')] = 0
+
+# Step 3: Create a new continuous model with fixed binary variables
+print("\nCreating new continuous model...")
+cont_model = xp.problem('continuous market')
+
+# Variables for continuous model
+cont_g_blocks = {}
+cont_u = {}
+cont_su = {}
+cont_sd = {}
+
+for i in generators:
+    g_min = generators[i]["g_min"]
+    g_max = generators[i]["g_max"]
+    step = (g_max - g_min) / num_blocks
+    
+    # Block variables (output per block)
+    cont_g_blocks[i] = {
+        h: [
+            cont_model.addVariable(
+                lb=0, 
+                ub=step,
+                name=f'g_{i}_{h}_block_{b}'
+            )
+            for b in range(num_blocks)
+        ]
+        for h in H
+    }
+    
+    # Fixed binary variables (as continuous with fixed bounds)
+    cont_u[i] = {h: cont_model.addVariable(
+        lb=binary_solutions[(i, h, 'u')], 
+        ub=binary_solutions[(i, h, 'u')], 
+        name=f'u_{i}_{h}'
+    ) for h in H}
+    
+    cont_su[i] = {h: cont_model.addVariable(
+        lb=binary_solutions[(i, h, 'su')], 
+        ub=binary_solutions[(i, h, 'su')], 
+        name=f'su_{i}_{h}'
+    ) for h in H}
+    
+    cont_sd[i] = {h: cont_model.addVariable(
+        lb=binary_solutions[(i, h, 'sd')], 
+        ub=binary_solutions[(i, h, 'sd')], 
+        name=f'sd_{i}_{h}'
+    ) for h in H}
+    
+    # Minimum output constraint if generator is on
+    for h in H:
+        # Sum of all blocks must be at least g_min if generator is on
+        cont_model.addConstraint(
+            xp.Sum(cont_g_blocks[i][h][b] for b in range(num_blocks)) >= g_min * cont_u[i][h]
+        )
+        
+        # Sum of all blocks must be at most g_max - g_min if generator is on
+        cont_model.addConstraint(
+            xp.Sum(cont_g_blocks[i][h][b] for b in range(num_blocks)) <= (g_max - g_min) * cont_u[i][h]
+        )
+
+# Demand variables for continuous model
+cont_d = {
+    h: [
+        cont_model.addVariable(
+            lb=0, 
+            ub=demand_blocks[h][c]["d_max"]
+        )
+        for c in range(len(demand_blocks[h]))
+    ]
+    for h in H
+}
+
+# Total demand per hour = sum of blocks
+cont_total_demand = {
+    h: xp.Sum(cont_d[h][c] for c in range(len(demand_blocks[h])))
+    for h in H
+}
+
+# Power balance constraints for continuous model
+cont_power_balance = {}
+for h in H:
+    cont_power_balance[h] = cont_model.addConstraint(
+        xp.Sum(
+            xp.Sum(cont_g_blocks[i][h][b] for b in range(num_blocks)) 
+            for i in generators
+        ) == cont_total_demand[h]
+    )
+
+# Objective: Minimize total generation cost minus demand utility
+cont_objective = (
+    # Generation costs: variable + no-load + startup/shutdown
+    xp.Sum(
+        xp.Sum(
+            lambdaG[i][b] * cont_g_blocks[i][h][b]  # Variable cost
+            for b in range(num_blocks)
+        ) + generators[i]["a"] * cont_u[i][h]        # No-load cost
+        for i in generators for h in H
+    ) + xp.Sum(
+        generators[i]["CSU"] * cont_su[i][h] + generators[i]["CSD"] * cont_sd[i][h]  # Startup/shutdown
+        for i in generators for h in H
+    ) 
+    # Demand utility (subtract from cost)
+    - xp.Sum(
+        demand_blocks[h][c]["lambdaD"] * cont_d[h][c]
+        for h in H for c in range(len(demand_blocks[h]))
+    )
+)
+
+cont_model.setObjective(cont_objective, sense=xp.minimize)
+
+# Step 4: Solve the continuous problem
+print("Solving continuous problem...")
+cont_model.solve()
+
+# Print LP results
+print("\nLP Results:")
+print("Objective value:", cont_model.getObjVal())
+
+# Step 5: Get market prices (using marginal generator approach)
+print("\nMarket Prices:")
+market_prices = {}
+for h in H:
+    try:
+        # Try using the row number (this worked in simple-xpress.py)
+        dual = cont_model.getDual(h)
+        
+        # If dual is zero, use marginal generator approach
+        if abs(dual) < 0.001:
+            # Use marginal generator approach
+            max_cost = 0
+            for i in generators:
+                for b in range(num_blocks):
+                    if cont_model.getSolution(cont_g_blocks[i][h][b]) > 0.001:  # Block is producing
+                        if lambdaG[i][b] > max_cost:
+                            max_cost = lambdaG[i][b]
+            
+            market_prices[h] = max_cost
+            print(f"Hour {h}: {max_cost:.2f} £/MWh (using marginal generator cost)")
+        else:
+            market_prices[h] = dual
+            print(f"Hour {h}: {dual:.2f} £/MWh (using row number)")
+    except Exception as e:
+        print(f"Hour {h}: Error with row number - {e}")
+        
+        # Use marginal generator approach
+        max_cost = 0
+        for i in generators:
+            for b in range(num_blocks):
+                if cont_model.getSolution(cont_g_blocks[i][h][b]) > 0.001:  # Block is producing
+                    if lambdaG[i][b] > max_cost:
+                        max_cost = lambdaG[i][b]
+        
+        market_prices[h] = max_cost
+        print(f"Hour {h}: {max_cost:.2f} £/MWh (using marginal generator cost)")
+
+# Step 6: Calculate generator 5's profit
+strategic_gen = 5
+profit = 0
+for h in H:
+    # Revenue (market price * quantity)
+    quantity = sum(model.getSolution(g_blocks[strategic_gen][h][b]) for b in range(num_blocks))
+    revenue = market_prices[h] * quantity
+    
+    # Costs
+    gen_cost = sum(lambdaG[strategic_gen][b] / k[strategic_gen][h] * model.getSolution(g_blocks[strategic_gen][h][b]) 
+                  for b in range(num_blocks))
+    no_load_cost = generators[strategic_gen]["a"] * model.getSolution(u[strategic_gen][h])
+    startup_cost = generators[strategic_gen]["CSU"] * model.getSolution(su[strategic_gen][h])
+    shutdown_cost = generators[strategic_gen]["CSD"] * model.getSolution(sd[strategic_gen][h])
+    
+    total_cost = gen_cost + no_load_cost + startup_cost + shutdown_cost
+    
+    # Profit = Revenue - Cost
+    profit += revenue - total_cost
+
+print(f"\nGenerator 5's profit: {profit:.2f} £")
