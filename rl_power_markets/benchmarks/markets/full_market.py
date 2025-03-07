@@ -69,7 +69,7 @@ class FullMarket:
         self.price_step = 25   # Updated price step
 
         self.num_episodes = 100
-        self.num_timesteps = 20
+        self.num_timesteps = 30
         self.episodes = range(self.num_episodes)
         self.timesteps = range(self.num_timesteps)
 
