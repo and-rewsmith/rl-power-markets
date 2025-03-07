@@ -6,7 +6,8 @@ import numpy as np
 from collections import deque
 
 from rl_power_markets.model.agent import Critic, Actor
-from rl_power_markets.benchmarks.markets.simple import SimpleMarket
+# from rl_power_markets.benchmarks.markets.simple import SimpleMarket
+from rl_power_markets.benchmarks.markets.full_market import FullMarket
 
 """
 This file functions as the harness that is parameterized by market type.
@@ -44,7 +45,7 @@ BETA2 = 0.4
 
 
 class PrioritizedReplayBuffer:
-    def __init__(self, market: SimpleMarket) -> None:
+    def __init__(self, market: FullMarket) -> None:
         self.buffer: list[tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]] = []
         self.priorities = np.zeros(BUFFER_SIZE)
         self.position = 0
@@ -115,7 +116,7 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "mps")
     initialize_wandb()
 
-    market = SimpleMarket()
+    market = FullMarket()
     episodes = market.episodes
     timesteps = market.timesteps
 
