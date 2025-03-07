@@ -9,7 +9,7 @@ class FullMarket:
         self.num_blocks = 5
 
         # RL environment parameters
-        self.action_space_low = 0.95  # Allow slightly below 1.0 for exploration
+        self.action_space_low = 1.0  # Allow slightly below 1.0 for exploration
         self.action_space_high = 1.5  # Start with small markups
         self.num_actions = self.num_hours  # one multiplier per hour
         self.obs_size = self.num_hours * 3  # u_i, g_i, and prices for each hour
@@ -69,7 +69,7 @@ class FullMarket:
         self.price_step = 25   # Updated price step
 
         self.num_episodes = 100
-        self.num_timesteps = 30
+        self.num_timesteps = 30  # One month of daily timesteps
         self.episodes = range(self.num_episodes)
         self.timesteps = range(self.num_timesteps)
 
