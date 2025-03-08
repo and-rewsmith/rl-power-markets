@@ -5,6 +5,7 @@ import wandb
 import numpy as np
 from collections import deque
 
+from rl_power_markets.benchmarks.markets.full_market import FullMarket
 from rl_power_markets.model.agent import Critic, Actor
 from rl_power_markets.benchmarks.markets.simple import SimpleMarket
 
@@ -29,12 +30,12 @@ def initialize_wandb() -> None:
 
 
 # Hyperparameters
-LR_ACTOR = 0.000001
+LR_ACTOR = 0.0001
 LR_CRITIC = 0.0001
 GAMMA = 0.7
 TAU = 0.005
 BUFFER_SIZE = 100000
-BATCH_SIZE = 64
+BATCH_SIZE = 8
 ACTOR_HIDDEN_SIZE = 256
 CRITIC_HIDDEN_SIZE = 256
 
@@ -81,7 +82,7 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "mps")
     initialize_wandb()
 
-    market = SimpleMarket()
+    market = FullMarket()
     episodes = market.episodes
     timesteps = market.timesteps
 
@@ -108,7 +109,7 @@ if __name__ == "__main__":
         for timestep in timesteps:
             # Get action and add exploration noise
             action = actor(state)
-            noise = torch.normal(0, 0.1, size=action.shape)
+            noise = torch.normal(0, 0.3, size=action.shape)
             action = torch.clamp(action + noise, min=1.0)  # Ensure multiplier >= 1.0
             assert action.shape == (market.batch_size, market.num_actions)
 
@@ -139,9 +140,13 @@ if __name__ == "__main__":
                 assert target_value.shape == (BATCH_SIZE, 1)
 
                 # Update critic
-                current_q = critic(states.detach(), actions.detach())
+                critic_output = critic(states.detach(), actions.detach())
+                current_q = critic_output
                 assert current_q.shape == (BATCH_SIZE, 1)
-                critic_loss = torch.nn.functional.mse_loss(current_q, target_value.detach())
+                # critic_loss = torch.nn.functional.mse_loss(current_q, target_value.detach())
+                td_error = target_value - current_q
+                critic_loss = td_error ** 2
+                critic_loss = critic_loss.mean()
 
                 optimizer_critic.zero_grad()
                 critic_loss.backward()
@@ -167,6 +172,10 @@ if __name__ == "__main__":
                     "actor_loss": actor_loss.item(),
                     "train_q_value": current_q.mean().item(),
                     "train_reward": rewards.mean().item(),
+                    "average_ui_status": market.u_i.mean().item(),
+                    "average_gi_status": market.g_i.mean().item(),
+                    "td_error": td_error.mean().item(),
+                    "critic_output": critic_output.mean().item(),
                 })
 
         max_reward_so_far = max(max_reward_so_far, episode_reward)

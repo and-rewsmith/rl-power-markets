@@ -3,12 +3,13 @@ import xpress as xp
 import numpy as np
 
 
-class FullMarket:
-    def __init__(self, batch_size: int = 32) -> None:
+class FullMarket2:
+    def __init__(self, batch_size) -> None:
         self.batch_size = batch_size
         self.num_hours = 24
         self.num_blocks = 5
 
+        # RL environment parameters
         self.num_actions = self.num_hours  # one multiplier per hour
         self.obs_size = self.num_hours * 3  # u_i, g_i, and prices for each hour
 
@@ -18,16 +19,16 @@ class FullMarket:
                 "g_min": 650, "g_max": 3252, "RU": 1951, "RD": 1951, "UT": 8, "DT": 8, "u0": 1},
             1: {"a": 18431.0, "b": 5.5, "c": 0.0002, "CSU": 4000000.0, "CSD": 800000.0,
                 "g_min": 3292, "g_max": 6584, "RU": 1317, "RD": 1317, "UT": 24, "DT": 24, "u0": 1},
-            # 2: {"a": 17005.0, "b": 30.0, "c": 0.0007, "CSU": 325000.0, "CSD": 28500.0,
-            #     "g_min": 2880, "g_max": 5760, "RU": 1152, "RD": 1152, "UT": 20, "DT": 20, "u0": 1},
-            # 3: {"a": 13755.0, "b": 35.0, "c": 0.0010, "CSU": 142500.0, "CSD": 18500.0,
-            #     "g_min": 1512, "g_max": 3781, "RU": 1512, "RD": 1512, "UT": 16, "DT": 16, "u0": 1},
-            # 4: {"a": 9930.0, "b": 60.0, "c": 0.0064, "CSU": 72000.0, "CSD": 14400.0,
-            #     "g_min": 667, "g_max": 3335, "RU": 1334, "RD": 1334, "UT": 10, "DT": 10, "u0": 1},
-            # 6: {"a": 8570.0, "b": 95.0, "c": 0.0082, "CSU": 31000.0, "CSD": 10000.0,
-            #     "g_min": 288, "g_max": 2880, "RU": 1728, "RD": 1728, "UT": 5, "DT": 5, "u0": 0},
-            # 7: {"a": 7530.0, "b": 100.0, "c": 0.0098, "CSU": 11200.0, "CSD": 8400.0,
-            #     "g_min": 275, "g_max": 2748, "RU": 2198, "RD": 2198, "UT": 4, "DT": 4, "u0": 0}
+            2: {"a": 17005.0, "b": 30.0, "c": 0.0007, "CSU": 325000.0, "CSD": 28500.0,
+                "g_min": 2880, "g_max": 5760, "RU": 1152, "RD": 1152, "UT": 20, "DT": 20, "u0": 1},
+            3: {"a": 13755.0, "b": 35.0, "c": 0.0010, "CSU": 142500.0, "CSD": 18500.0,
+                "g_min": 1512, "g_max": 3781, "RU": 1512, "RD": 1512, "UT": 16, "DT": 16, "u0": 1},
+            4: {"a": 9930.0, "b": 60.0, "c": 0.0064, "CSU": 72000.0, "CSD": 14400.0,
+                "g_min": 667, "g_max": 3335, "RU": 1334, "RD": 1334, "UT": 10, "DT": 10, "u0": 1},
+            6: {"a": 8570.0, "b": 95.0, "c": 0.0082, "CSU": 31000.0, "CSD": 10000.0,
+                "g_min": 288, "g_max": 2880, "RU": 1728, "RD": 1728, "UT": 5, "DT": 5, "u0": 0},
+            7: {"a": 7530.0, "b": 100.0, "c": 0.0098, "CSU": 11200.0, "CSD": 8400.0,
+                "g_min": 275, "g_max": 2748, "RU": 2198, "RD": 2198, "UT": 4, "DT": 4, "u0": 0}
         }
 
         # Demand parameters with extreme peak characteristics
@@ -56,7 +57,33 @@ class FullMarket:
             22000,  # 21:00 - Evening decline
             18000,  # 22:00 - Late evening
             16000,  # 23:00 - Night
-        ])
+        ]) / 8 * 1
+        # base_demand = torch.tensor([
+        #     1,  # 00:00 - Night
+        #     1,  # 01:00 - Night
+        #     1,  # 02:00 - Lowest demand
+        #     1,  # 03:00 - Lowest demand
+        #     1,  # 04:00 - Starting to rise
+        #     1,  # 05:00 - Morning ramp begins
+        #     1,  # 06:00 - Morning ramp
+        #     2,  # 07:00 - Morning peak starts
+        #     2,  # 08:00 - Morning peak
+        #     2,  # 09:00 - Business hours
+        #     2,  # 10:00 - Business hours peak
+        #     2,  # 11:00 - Business hours peak
+        #     2,  # 12:00 - Business hours peak
+        #     2,  # 13:00 - Business hours
+        #     2,  # 14:00 - Afternoon dip starts
+        #     2,  # 15:00 - Afternoon dip
+        #     2,  # 16:00 - Beginning of evening ramp
+        #     2,  # 17:00 - Evening ramp
+        #     2,  # 18:00 - Evening peak
+        #     2,  # 19:00 - Highest evening peak
+        #     2,  # 20:00 - Evening peak declining
+        #     2,  # 21:00 - Evening decline
+        #     1,  # 22:00 - Late evening
+        #     1,  # 23:00 - Night
+        # ])
 
         # Apply demand multiplier (1.2) and peak multiplier (2.5) for peak hours (10:00-22:00)
         peak_hours = torch.tensor([1 if 10 <= h <= 21 else 0 for h in range(24)], dtype=torch.float32)
@@ -66,8 +93,8 @@ class FullMarket:
         self.base_price = 150  # Increased base price
         self.price_step = 25   # Updated price step
 
-        self.num_episodes = 10000
-        self.num_timesteps = 10  # One month of daily timesteps
+        self.num_episodes = 100
+        self.num_timesteps = 14  # One month of daily timesteps
         self.episodes = range(self.num_episodes)
         self.timesteps = range(self.num_timesteps)
 
@@ -119,9 +146,8 @@ class FullMarket:
             # Calculate profits
             profits[b] = self._calculate_profit(model, market_prices, k_factors[0])
 
-        # print(self.u_i)
-        # input()
-
+        print(self.u_i)
+        input()
         return self.obtain_state(), profits
 
     def obtain_state(self) -> torch.Tensor:
@@ -228,7 +254,8 @@ class FullMarket:
             ) + xp.Sum(
                 self.generators[i]["CSU"] * self.su[i][h] + self.generators[i]["CSD"] * self.sd[i][h]
                 for i in self.generators for h in H
-            ) - xp.Sum(
+            )
+            - xp.Sum(
                 demand_blocks[h][c]["lambdaD"] * d[h][c]
                 for h in H for c in range(len(demand_blocks[h]))
             )
@@ -323,7 +350,8 @@ class FullMarket:
                     for b in range(self.num_blocks)
                 ) + self.generators[i]["a"] * cont_u[i][h]
                 for i in self.generators for h in H
-            ) - xp.Sum(
+            )
+            - xp.Sum(
                 demand_blocks[h][c]["lambdaD"] * cont_d[h][c]
                 for h in H for c in range(len(demand_blocks[h]))
             )
