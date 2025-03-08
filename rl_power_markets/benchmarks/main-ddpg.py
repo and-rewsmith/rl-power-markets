@@ -31,7 +31,7 @@ def initialize_wandb() -> None:
 
 
 # Hyperparameters
-LR_ACTOR = 0.0005
+LR_ACTOR = 0.001
 LR_CRITIC = 0.001
 GAMMA = 0.7
 TAU = 0.005
