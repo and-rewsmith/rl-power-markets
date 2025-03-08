@@ -32,37 +32,37 @@ class FullMarket:
 
         # Demand parameters with extreme peak characteristics
         base_demand = torch.tensor([
-            15000,  # 00:00 - Night
-            14000,  # 01:00 - Night
-            13000,  # 02:00 - Lowest demand
-            12500,  # 03:00 - Lowest demand
-            13000,  # 04:00 - Starting to rise
-            14500,  # 05:00 - Morning ramp begins
-            17000,  # 06:00 - Morning ramp
-            20000,  # 07:00 - Morning peak starts
-            22000,  # 08:00 - Morning peak
-            23000,  # 09:00 - Business hours
-            23500,  # 10:00 - Business hours peak
-            24000,  # 11:00 - Business hours peak
-            24000,  # 12:00 - Business hours peak
-            23500,  # 13:00 - Business hours
-            23000,  # 14:00 - Afternoon dip starts
-            22500,  # 15:00 - Afternoon dip
-            22000,  # 16:00 - Beginning of evening ramp
-            23000,  # 17:00 - Evening ramp
-            25000,  # 18:00 - Evening peak
-            26000,  # 19:00 - Highest evening peak
-            25000,  # 20:00 - Evening peak declining
-            22000,  # 21:00 - Evening decline
-            18000,  # 22:00 - Late evening
-            16000,  # 23:00 - Night
+            1500,  # 00:00 - Night
+            1400,  # 01:00 - Night
+            1300,  # 02:00 - Lowest demand
+            1250,  # 03:00 - Lowest demand
+            1300,  # 04:00 - Starting to rise
+            1450,  # 05:00 - Morning ramp begins
+            1700,  # 06:00 - Morning ramp
+            2000,  # 07:00 - Morning peak starts
+            2200,  # 08:00 - Morning peak
+            2300,  # 09:00 - Business hours
+            2350,  # 10:00 - Business hours peak
+            2400,  # 11:00 - Business hours peak
+            2400,  # 12:00 - Business hours peak
+            2350,  # 13:00 - Business hours
+            2300,  # 14:00 - Afternoon dip starts
+            2250,  # 15:00 - Afternoon dip
+            2200,  # 16:00 - Beginning of evening ramp
+            2300,  # 17:00 - Evening ramp
+            2500,  # 18:00 - Evening peak
+            2600,  # 19:00 - Highest evening peak
+            2500,  # 20:00 - Evening peak declining
+            2200,  # 21:00 - Evening decline
+            1800,  # 22:00 - Late evening
+            1600,  # 23:00 - Night
         ])
 
-        # Apply demand multiplier (1.2) and peak multiplier (2.5) for peak hours (10:00-22:00)
-        peak_hours = torch.tensor([1 if 10 <= h <= 21 else 0 for h in range(24)], dtype=torch.float32)
-        # 1.5 additional multiplier for peak hours to achieve 2.5x
-        self.base_demand_profile = base_demand * (1 + peak_hours * 2.5)
-        # self.base_demand_profile = base_demand
+        # # Apply demand multiplier (1.2) and peak multiplier (2.5) for peak hours (10:00-22:00)
+        # peak_hours = torch.tensor([1 if 10 <= h <= 21 else 0 for h in range(24)], dtype=torch.float32)
+        # # 1.5 additional multiplier for peak hours to achieve 2.5x
+        # self.base_demand_profile = base_demand * (1 + peak_hours * 2.5)
+        self.base_demand_profile = base_demand
 
         self.base_price = 150  # Increased base price
         self.price_step = 25   # Updated price step
@@ -194,19 +194,26 @@ class FullMarket:
         d = {}
         demand_blocks = {}
 
+        # Fixed percentages that sum to 100%
+        block_percentages = [0.4, 0.3, 0.2, 0.07, 0.03]  # Adjust as needed
+
         for h in H:
             blocks = []
             base_demand = self.base_demand_profile[h]
-            total_block_demand = 0
 
             for b in range(self.num_blocks):
-                max_demand = base_demand * (0.7 / (b + 1))
+                max_demand = base_demand * block_percentages[b]
                 marginal_price = self.base_price - b * self.price_step
                 blocks.append({"lambdaD": marginal_price, "d_max": max_demand})
-                total_block_demand += max_demand
 
             demand_blocks[h] = blocks
             d[h] = [model.addVariable(lb=0, ub=blocks[c]["d_max"]) for c in range(len(blocks))]
+
+        # Add constraint to ensure total demand served equals base demand
+        for h in H:
+            model.addConstraint(
+                xp.Sum(d[h][c] for c in range(len(demand_blocks[h]))) == self.base_demand_profile[h].item()
+            )
 
         # Power balance constraints
         for h in H:

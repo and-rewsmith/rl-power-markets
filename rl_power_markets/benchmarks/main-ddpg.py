@@ -6,6 +6,7 @@ import numpy as np
 from collections import deque
 
 from rl_power_markets.benchmarks.markets.full_market import FullMarket
+from rl_power_markets.benchmarks.markets.full_market_simple import FullSimpleMarket
 from rl_power_markets.model.agent import Critic, Actor
 from rl_power_markets.benchmarks.markets.simple import SimpleMarket
 
@@ -82,7 +83,7 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "mps")
     initialize_wandb()
 
-    market = FullMarket()
+    market = FullSimpleMarket()
     episodes = market.episodes
     timesteps = market.timesteps
 
@@ -177,6 +178,7 @@ if __name__ == "__main__":
                     "average_prices": market.prices.mean().item(),
                     "td_error": td_error.mean().item(),
                     "critic_output": critic_output.mean().item(),
+                    "bidding multiplier": action.mean().item(),
                 })
 
         max_reward_so_far = max(max_reward_so_far, episode_reward)
