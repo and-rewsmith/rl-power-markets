@@ -8,11 +8,11 @@ class FullSimpleMarket:
         self.batch_size = batch_size
         self.num_hours = 10
 
-        # Define a small number of generators with variable costs
+        # Define a small number of generators with variable costs and startup/shutdown costs
         self.generators = {
-            0: {"g_min": 100, "g_max": 500, "u0": 1, "var_cost": 20.0},  # Removed CSU and CSD
-            1: {"g_min": 200, "g_max": 600, "u0": 0, "var_cost": 30.0},  # Removed CSU and CSD
-            2: {"g_min": 150, "g_max": 550, "u0": 0, "var_cost": 25.0},  # Removed CSU and CSD
+            0: {"g_min": 100, "g_max": 500, "CSU": 1000.0, "CSD": 500.0, "u0": 1, "var_cost": 20.0},
+            1: {"g_min": 200, "g_max": 600, "CSU": 1500.0, "CSD": 750.0, "u0": 0, "var_cost": 30.0},
+            2: {"g_min": 150, "g_max": 550, "CSU": 1200.0, "CSD": 600.0, "u0": 0, "var_cost": 25.0},
         }
 
         # Simple demand profile
@@ -99,8 +99,8 @@ class FullSimpleMarket:
         # Generator variables
         self.g_blocks = {}
         self.u = {}  # Make u accessible to other methods
-        # self.su = {}  # Commented out startup variables
-        # self.sd = {}  # Commented out shutdown variables
+        self.su = {}  # Startup variables
+        self.sd = {}  # Shutdown variables
 
         for i in self.generators:
             g_min = self.generators[i]["g_min"]
@@ -114,8 +114,8 @@ class FullSimpleMarket:
 
             # Commitment variables
             self.u[i] = {h: model.addVariable(vartype=xp.binary, name=f'u_{i}_{h}') for h in H}
-            # self.su[i] = {h: model.addVariable(vartype=xp.binary, name=f'su_{i}_{h}') for h in H}  # Commented out
-            # self.sd[i] = {h: model.addVariable(vartype=xp.binary, name=f'sd_{i}_{h}') for h in H}  # Commented out
+            self.su[i] = {h: model.addVariable(vartype=xp.binary, name=f'su_{i}_{h}') for h in H}
+            self.sd[i] = {h: model.addVariable(vartype=xp.binary, name=f'sd_{i}_{h}') for h in H}
 
             # Minimum output constraint if generator is on
             for h in H:
@@ -126,13 +126,13 @@ class FullSimpleMarket:
                     self.g_blocks[i][h] <= g_max * self.u[i][h]
                 )
 
-                # Startup and shutdown constraints - commented out
-                # if h > 0:
-                #     model.addConstraint(self.u[i][h] - self.u[i][h-1] <= self.su[i][h])
-                #     model.addConstraint(self.u[i][h-1] - self.u[i][h] <= self.sd[i][h])
-                # else:
-                #     model.addConstraint(self.u[i][h] - self.generators[i]["u0"] <= self.su[i][h])
-                #     model.addConstraint(self.generators[i]["u0"] - self.u[i][h] <= self.sd[i][h])
+                # Startup and shutdown constraints
+                if h > 0:
+                    model.addConstraint(self.u[i][h] - self.u[i][h-1] <= self.su[i][h])
+                    model.addConstraint(self.u[i][h-1] - self.u[i][h] <= self.sd[i][h])
+                else:
+                    model.addConstraint(self.u[i][h] - self.generators[i]["u0"] <= self.su[i][h])
+                    model.addConstraint(self.generators[i]["u0"] - self.u[i][h] <= self.sd[i][h])
 
         # Power balance constraints
         for h in H:
@@ -148,12 +148,10 @@ class FullSimpleMarket:
             xp.Sum(
                 self.generators[i]["var_cost"] * k[i][h] * self.g_blocks[i][h]
                 for i in self.generators for h in H
+            ) + xp.Sum(
+                self.generators[i]["CSU"] * self.su[i][h] + self.generators[i]["CSD"] * self.sd[i][h]
+                for i in self.generators for h in H
             )
-            # Removed startup and shutdown costs from objective
-            # + xp.Sum(
-            #     self.generators[i]["CSU"] * self.su[i][h] + self.generators[i]["CSD"] * self.sd[i][h]
-            #     for i in self.generators for h in H
-            # )
         )
 
         model.setObjective(objective, sense=xp.minimize)
@@ -164,11 +162,8 @@ class FullSimpleMarket:
         for i in self.generators:
             for h in range(self.num_hours):
                 binary_solutions[(i, h, 'u')] = model.getSolution(self.u[i][h])
-                # binary_solutions[(i, h, 'su')] = model.getSolution(self.su[i][h])  # Commented out
-                # binary_solutions[(i, h, 'sd')] = model.getSolution(self.sd[i][h])  # Commented out
-                # Add default values for su and sd since they're used in _build_lp_model
-                binary_solutions[(i, h, 'su')] = 0
-                binary_solutions[(i, h, 'sd')] = 0
+                binary_solutions[(i, h, 'su')] = model.getSolution(self.su[i][h])
+                binary_solutions[(i, h, 'sd')] = model.getSolution(self.sd[i][h])
         return binary_solutions
 
     def _build_lp_model(self, binary_solutions):
@@ -218,13 +213,11 @@ class FullSimpleMarket:
             xp.Sum(
                 self.generators[i]["var_cost"] * self.cont_g_blocks[i][h]
                 for i in self.generators for h in H
+            ) + xp.Sum(
+                self.generators[i]["CSU"] * binary_solutions[(i, h, 'su')] +
+                self.generators[i]["CSD"] * binary_solutions[(i, h, 'sd')]
+                for i in self.generators for h in H
             )
-            # Removed startup and shutdown costs from objective
-            # + xp.Sum(
-            #     self.generators[i]["CSU"] * binary_solutions[(i, h, 'su')] +
-            #     self.generators[i]["CSD"] * binary_solutions[(i, h, 'sd')]
-            #     for i in self.generators for h in H
-            # )
         )
 
         model.setObjective(objective, sense=xp.minimize)
@@ -276,13 +269,12 @@ class FullSimpleMarket:
 
             # Use true costs (not inflated by k) for profit calculation
             var_cost = self.generators[self.strategic_gen]["var_cost"] * quantity
-            # Removed startup and shutdown costs
-            # startup_cost = self.generators[self.strategic_gen]["CSU"] * \
-            #     model.getSolution(self.su[self.strategic_gen][h])
-            # shutdown_cost = self.generators[self.strategic_gen]["CSD"] * \
-            #     model.getSolution(self.sd[self.strategic_gen][h])
+            startup_cost = self.generators[self.strategic_gen]["CSU"] * \
+                model.getSolution(self.su[self.strategic_gen][h])
+            shutdown_cost = self.generators[self.strategic_gen]["CSD"] * \
+                model.getSolution(self.sd[self.strategic_gen][h])
 
-            total_cost = var_cost  # Removed startup and shutdown costs
+            total_cost = var_cost + startup_cost + shutdown_cost
             hour_profit = revenue - total_cost
             profit += hour_profit
 
