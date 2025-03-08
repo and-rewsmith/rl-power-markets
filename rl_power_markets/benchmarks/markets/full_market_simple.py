@@ -4,15 +4,15 @@ import numpy as np
 
 
 class FullSimpleMarket:
-    def __init__(self, batch_size: int = 32) -> None:
+    def __init__(self, batch_size) -> None:
         self.batch_size = batch_size
-        self.num_hours = 24
+        self.num_hours = 10
 
-        # Define a small number of generators
+        # Define a small number of generators with variable costs
         self.generators = {
-            0: {"g_min": 100, "g_max": 500, "CSU": 1000.0, "CSD": 500.0, "u0": 1},
-            1: {"g_min": 200, "g_max": 600, "CSU": 1500.0, "CSD": 750.0, "u0": 0},
-            2: {"g_min": 150, "g_max": 550, "CSU": 1200.0, "CSD": 600.0, "u0": 0},
+            0: {"g_min": 100, "g_max": 500, "CSU": 1000.0, "CSD": 500.0, "u0": 1, "var_cost": 20.0},
+            1: {"g_min": 200, "g_max": 600, "CSU": 1500.0, "CSD": 750.0, "u0": 0, "var_cost": 30.0},
+            2: {"g_min": 150, "g_max": 550, "CSU": 1200.0, "CSD": 600.0, "u0": 0, "var_cost": 25.0},
         }
 
         # Simple demand profile
@@ -151,6 +151,9 @@ class FullSimpleMarket:
 
         objective = (
             xp.Sum(
+                self.generators[i]["var_cost"] * k[i][h] * self.g_blocks[i][h]
+                for i in self.generators for h in H
+            ) + xp.Sum(
                 self.generators[i]["CSU"] * self.su[i][h] + self.generators[i]["CSD"] * self.sd[i][h]
                 for i in self.generators for h in H
             )
@@ -163,7 +166,6 @@ class FullSimpleMarket:
         binary_solutions = {}
         for i in self.generators:
             for h in range(self.num_hours):
-                print(i, h)
                 binary_solutions[(i, h, 'u')] = model.getSolution(self.u[i][h])
                 binary_solutions[(i, h, 'su')] = model.getSolution(self.su[i][h])
                 binary_solutions[(i, h, 'sd')] = model.getSolution(self.sd[i][h])
@@ -214,6 +216,9 @@ class FullSimpleMarket:
         # Objective function (no strategic bidding in pricing run)
         objective = (
             xp.Sum(
+                self.generators[i]["var_cost"] * self.cont_g_blocks[i][h]
+                for i in self.generators for h in H
+            ) + xp.Sum(
                 self.generators[i]["CSU"] * binary_solutions[(i, h, 'su')] +
                 self.generators[i]["CSD"] * binary_solutions[(i, h, 'sd')]
                 for i in self.generators for h in H
@@ -242,7 +247,7 @@ class FullSimpleMarket:
 
             for i in self.generators:
                 if model.getSolution(self.cont_g_blocks[i][h]) > 0.001:
-                    cost = self.generators[i]["CSU"]  # Simplified cost
+                    cost = self.generators[i]["var_cost"]  # Use variable cost
                     if cost > max_cost:
                         max_cost = cost
                         marginal_gen = i
@@ -253,19 +258,27 @@ class FullSimpleMarket:
 
     def _calculate_profit(self, model, market_prices, k):
         profit = 0
+        total_quantity = 0
+        total_revenue = 0
+        total_costs = 0
 
         for h in range(self.num_hours):
             quantity = model.getSolution(self.g_blocks[self.strategic_gen][h])
             revenue = market_prices[h] * quantity
 
             # Use true costs (not inflated by k) for profit calculation
+            var_cost = self.generators[self.strategic_gen]["var_cost"] * quantity
             startup_cost = self.generators[self.strategic_gen]["CSU"] * \
                 model.getSolution(self.su[self.strategic_gen][h])
             shutdown_cost = self.generators[self.strategic_gen]["CSD"] * \
                 model.getSolution(self.sd[self.strategic_gen][h])
-            fixed_costs = startup_cost + shutdown_cost
 
-            hour_profit = revenue - fixed_costs
+            total_cost = var_cost + startup_cost + shutdown_cost
+            hour_profit = revenue - total_cost
             profit += hour_profit
+
+            total_quantity += quantity
+            total_revenue += revenue
+            total_costs += total_cost
 
         return profit

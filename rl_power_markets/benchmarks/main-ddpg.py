@@ -31,8 +31,8 @@ def initialize_wandb() -> None:
 
 
 # Hyperparameters
-LR_ACTOR = 0.0001
-LR_CRITIC = 0.0001
+LR_ACTOR = 0.0005
+LR_CRITIC = 0.001
 GAMMA = 0.7
 TAU = 0.005
 BUFFER_SIZE = 100000
@@ -83,7 +83,7 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "mps")
     initialize_wandb()
 
-    market = FullSimpleMarket()
+    market = FullSimpleMarket(batch_size=BATCH_SIZE)
     episodes = market.episodes
     timesteps = market.timesteps
 
@@ -126,6 +126,10 @@ if __name__ == "__main__":
 
             wandb.log({
                 "episode_reward": episode_reward,
+                "average_prices": market.prices.mean().item(),
+                "bidding multiplier": action.mean().item(),
+                "average_ui_status": market.u_i.mean().item(),
+                "average_gi_status": market.g_i.mean().item(),
             })
 
             # Train if enough samples
@@ -173,12 +177,8 @@ if __name__ == "__main__":
                     "actor_loss": actor_loss.item(),
                     "train_q_value": current_q.mean().item(),
                     "train_reward": rewards.mean().item(),
-                    "average_ui_status": market.u_i.mean().item(),
-                    "average_gi_status": market.g_i.mean().item(),
-                    "average_prices": market.prices.mean().item(),
                     "td_error": td_error.mean().item(),
                     "critic_output": critic_output.mean().item(),
-                    "bidding multiplier": action.mean().item(),
                 })
 
         max_reward_so_far = max(max_reward_so_far, episode_reward)
