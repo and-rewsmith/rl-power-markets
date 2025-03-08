@@ -44,7 +44,6 @@ class FullSimpleMarket:
         return self.obtain_state()
 
     def step(self, multipliers: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-        print("---")
         assert multipliers.shape == (self.batch_size, self.num_hours)
         assert (multipliers >= 1.0).all()
 
@@ -72,8 +71,7 @@ class FullSimpleMarket:
             # Update commitment and generation
             for h in range(self.num_hours):
                 self.u_i[b, h] = binary_solutions[(self.strategic_gen, h, 'u')]
-                self.g_i[b, h] = sum(model.getSolution(self.g_blocks[self.strategic_gen][h][b])
-                                     for b in range(self.num_blocks))
+                self.g_i[b, h] = model.getSolution(self.g_blocks[self.strategic_gen][h])
 
             # Calculate profits
             profits[b] = self._calculate_profit(model, market_prices, k_factors[0])
@@ -110,7 +108,7 @@ class FullSimpleMarket:
 
             # Block variables (output per block)
             self.g_blocks[i] = {
-                h: model.addVariable(lb=g_min, ub=g_max, name=f'g_{i}_{h}')
+                h: model.addVariable(lb=0, ub=g_max, name=f'g_{i}_{h}')
                 for h in H
             }
 
@@ -136,20 +134,16 @@ class FullSimpleMarket:
                     model.addConstraint(self.u[i][h] - self.generators[i]["u0"] <= self.su[i][h])
                     model.addConstraint(self.generators[i]["u0"] - self.u[i][h] <= self.sd[i][h])
 
-        # # Power balance constraints
-        # for h in H:
-        #     model.addConstraint(
-        #         xp.Sum(self.g_blocks[i][h] for i in self.generators) == self.demand_profile[h].item()
-        #     )
+        # Power balance constraints
+        for h in H:
+            model.addConstraint(
+                xp.Sum(self.g_blocks[i][h] for i in self.generators) == self.demand_profile[h].item()
+            )
 
         total_demand = 0
         for i in self.generators:
             for h in H:
                 total_demand += self.g_blocks[i][h]
-        print(total_demand)
-
-        print(torch.sum(self.demand_profile))
-        input()
 
         # Objective function
         k = {i: {h: 1.0 for h in H} for i in self.generators}
@@ -198,7 +192,7 @@ class FullSimpleMarket:
             g_max = self.generators[i]["g_max"]
 
             self.cont_g_blocks[i] = {
-                h: model.addVariable(lb=g_min, ub=g_max, name=f'g_{i}_{h}')
+                h: model.addVariable(lb=0, ub=g_max, name=f'g_{i}_{h}')
                 for h in H
             }
 
