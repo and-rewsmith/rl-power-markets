@@ -6,7 +6,7 @@ import numpy as np
 from collections import deque
 
 from rl_power_markets.benchmarks.markets.full_market import FullMarket
-from rl_power_markets.benchmarks.markets.full_market_simple import FullSimpleMarket
+from rl_power_markets.benchmarks.markets.full_market_linear import FullSimpleMarket
 from rl_power_markets.model.agent import Critic, Actor
 from rl_power_markets.benchmarks.markets.simple import SimpleMarket
 
