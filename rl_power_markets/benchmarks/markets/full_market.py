@@ -18,16 +18,16 @@ class FullMarket:
                 "g_min": 650, "g_max": 3252, "RU": 1951, "RD": 1951, "UT": 8, "DT": 8, "u0": 1},
             1: {"a": 18431.0, "b": 5.5, "c": 0.0002, "CSU": 4000000.0, "CSD": 800000.0,
                 "g_min": 3292, "g_max": 6584, "RU": 1317, "RD": 1317, "UT": 24, "DT": 24, "u0": 1},
-            # 2: {"a": 17005.0, "b": 30.0, "c": 0.0007, "CSU": 325000.0, "CSD": 28500.0,
-            #     "g_min": 2880, "g_max": 5760, "RU": 1152, "RD": 1152, "UT": 20, "DT": 20, "u0": 1},
-            # 3: {"a": 13755.0, "b": 35.0, "c": 0.0010, "CSU": 142500.0, "CSD": 18500.0,
-            #     "g_min": 1512, "g_max": 3781, "RU": 1512, "RD": 1512, "UT": 16, "DT": 16, "u0": 1},
-            # 4: {"a": 9930.0, "b": 60.0, "c": 0.0064, "CSU": 72000.0, "CSD": 14400.0,
-            #     "g_min": 667, "g_max": 3335, "RU": 1334, "RD": 1334, "UT": 10, "DT": 10, "u0": 1},
-            # 6: {"a": 8570.0, "b": 95.0, "c": 0.0082, "CSU": 31000.0, "CSD": 10000.0,
-            #     "g_min": 288, "g_max": 2880, "RU": 1728, "RD": 1728, "UT": 5, "DT": 5, "u0": 0},
-            # 7: {"a": 7530.0, "b": 100.0, "c": 0.0098, "CSU": 11200.0, "CSD": 8400.0,
-            #     "g_min": 275, "g_max": 2748, "RU": 2198, "RD": 2198, "UT": 4, "DT": 4, "u0": 0}
+            2: {"a": 17005.0, "b": 30.0, "c": 0.0007, "CSU": 325000.0, "CSD": 28500.0,
+                "g_min": 2880, "g_max": 5760, "RU": 1152, "RD": 1152, "UT": 20, "DT": 20, "u0": 1},
+            3: {"a": 13755.0, "b": 35.0, "c": 0.0010, "CSU": 142500.0, "CSD": 18500.0,
+                "g_min": 1512, "g_max": 3781, "RU": 1512, "RD": 1512, "UT": 16, "DT": 16, "u0": 1},
+            4: {"a": 9930.0, "b": 60.0, "c": 0.0064, "CSU": 72000.0, "CSD": 14400.0,
+                "g_min": 667, "g_max": 3335, "RU": 1334, "RD": 1334, "UT": 10, "DT": 10, "u0": 1},
+            6: {"a": 8570.0, "b": 95.0, "c": 0.0082, "CSU": 31000.0, "CSD": 10000.0,
+                "g_min": 288, "g_max": 2880, "RU": 1728, "RD": 1728, "UT": 5, "DT": 5, "u0": 0},
+            7: {"a": 7530.0, "b": 100.0, "c": 0.0098, "CSU": 11200.0, "CSD": 8400.0,
+                "g_min": 275, "g_max": 2748, "RU": 2198, "RD": 2198, "UT": 4, "DT": 4, "u0": 0}
         }
 
         # Demand parameters with extreme peak characteristics
@@ -62,6 +62,7 @@ class FullMarket:
         peak_hours = torch.tensor([1 if 10 <= h <= 21 else 0 for h in range(24)], dtype=torch.float32)
         # 1.5 additional multiplier for peak hours to achieve 2.5x
         self.base_demand_profile = base_demand * (1 + peak_hours * 2.5)
+        # self.base_demand_profile = base_demand
 
         self.base_price = 150  # Increased base price
         self.price_step = 25   # Updated price step

@@ -109,7 +109,7 @@ if __name__ == "__main__":
         for timestep in timesteps:
             # Get action and add exploration noise
             action = actor(state)
-            noise = torch.normal(0, 0.3, size=action.shape)
+            noise = torch.normal(0, 0.2, size=action.shape)
             action = torch.clamp(action + noise, min=1.0)  # Ensure multiplier >= 1.0
             assert action.shape == (market.batch_size, market.num_actions)
 
@@ -174,6 +174,7 @@ if __name__ == "__main__":
                     "train_reward": rewards.mean().item(),
                     "average_ui_status": market.u_i.mean().item(),
                     "average_gi_status": market.g_i.mean().item(),
+                    "average_prices": market.prices.mean().item(),
                     "td_error": td_error.mean().item(),
                     "critic_output": critic_output.mean().item(),
                 })
