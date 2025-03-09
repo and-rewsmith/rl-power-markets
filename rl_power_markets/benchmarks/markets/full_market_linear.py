@@ -49,6 +49,9 @@ class FullSimpleMarket:
 
         profits = torch.zeros(self.batch_size, 1)
 
+        # Initialize storage for all generator dispatch values
+        self.all_generator_dispatch = []
+
         # Process each batch item separately
         for b in range(self.batch_size):
             k_factors = multipliers[b].detach().numpy()
@@ -68,7 +71,15 @@ class FullSimpleMarket:
             market_prices = self._get_market_prices(cont_model, k_factors)
             self.prices[b] = torch.tensor(list(market_prices.values()))
 
-            # Update commitment and generation
+            # Store dispatch for all generators
+            generator_dispatch = {}
+            for i in self.generators:
+                generator_dispatch[i] = torch.tensor([cont_model.getSolution(self.cont_g_blocks[i][h])
+                                                      for h in range(self.num_hours)])
+
+            self.all_generator_dispatch.append(generator_dispatch)
+
+            # Update commitment and generation for strategic generator
             for h in range(self.num_hours):
                 self.u_i[b, h] = binary_solutions[(self.strategic_gen, h, 'u')]
                 self.g_i[b, h] = model.getSolution(self.g_blocks[self.strategic_gen][h])

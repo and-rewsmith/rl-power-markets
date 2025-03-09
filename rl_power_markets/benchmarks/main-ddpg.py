@@ -4,6 +4,7 @@ import torch
 import wandb
 import numpy as np
 from collections import deque
+import os
 
 from rl_power_markets.benchmarks.markets.full_market_linear import FullSimpleMarket
 from rl_power_markets.model.agent import Critic, Actor
@@ -29,20 +30,28 @@ def initialize_wandb() -> None:
     )
 
 
+# BATCH_SIZE = 8
+# LR_ACTOR = 0.00001
+# LR_CRITIC = 0.001
+NOISE_MAX_SCALE = 1       # Maximum noise amplitude
+
+
+BATCH_SIZE = 64
+LR_ACTOR = 0.000001
+LR_CRITIC = 0.01
+NOISE_MAX_SCALE = 0.1       # Maximum noise amplitude
+
 # Hyperparameters
-LR_ACTOR = 0.00001
-LR_CRITIC = 0.001
+NOISE_MIN_SCALE = 0.0001      # Minimum noise amplitude
 GAMMA = 0.7
 TAU = 0.005
 BUFFER_SIZE = 100000
-BATCH_SIZE = 8
 ACTOR_HIDDEN_SIZE = 256
 CRITIC_HIDDEN_SIZE = 256
 # Noise parameters
-NOISE_MAX_SCALE = 1       # Maximum noise amplitude
-NOISE_MIN_SCALE = 0.0001      # Minimum noise amplitude
 NOISE_PERIOD = 40           # Number of episodes for a complete cycle
 NOISE_PHASE_SHIFT = 0       # Phase shift in radians
+SAVE_FREQUENCY = 100
 
 
 class ReplayBuffer:
@@ -87,9 +96,26 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "mps")
     initialize_wandb()
 
-    market = FullSimpleMarket(BATCH_SIZE)
+    market = SimpleMarket(BATCH_SIZE)
     episodes = market.episodes
     timesteps = market.timesteps
+
+    # Create a tensor to store data for a batch of episodes
+    # Shape: (SAVE_FREQUENCY, num_hours, 4)
+    episode_data_batch = torch.zeros((SAVE_FREQUENCY, market.num_hours, 4))
+
+    # Output file name
+    output_file = 'episode_data.pt'
+
+    # Delete the file if it exists to start fresh
+    if os.path.exists(output_file):
+        os.remove(output_file)
+        print(f"Deleted existing data file: {output_file}")
+
+    # Initialize with empty data
+    existing_data = torch.zeros((0, market.num_hours, 4))
+    episodes_saved = 0
+    print("Starting fresh with new data file")
 
     # Initialize networks
     actor = Actor(obs_size=market.obs_size, hidden_size=ACTOR_HIDDEN_SIZE, num_actions=market.num_actions)
@@ -110,7 +136,8 @@ if __name__ == "__main__":
     current_noise_scale = NOISE_MAX_SCALE
 
     episode_counter = 0
-    for episode in episodes:
+    batch_counter = 0
+    for episode in range(episodes_saved, market.num_episodes):
         # Calculate sinusoidal noise scale
         # sin oscillates between -1 and 1, so we adjust to get values between NOISE_MIN_SCALE and NOISE_MAX_SCALE
         current_noise_scale = NOISE_MIN_SCALE + (NOISE_MAX_SCALE - NOISE_MIN_SCALE) * (
@@ -122,7 +149,12 @@ if __name__ == "__main__":
         episode_reward: float = 0
         episode_price: float = 0
 
-        episode_counter += 1
+        # Initialize arrays to collect data for this episode
+        episode_prices = torch.zeros(market.num_hours)
+        episode_dispatch_0 = torch.zeros(market.num_hours)
+        episode_dispatch_1 = torch.zeros(market.num_hours)
+        episode_dispatch_2 = torch.zeros(market.num_hours)
+        timestep_count = 0
 
         for timestep in timesteps:
             # Get action and add exploration noise with decaying scale
@@ -142,6 +174,18 @@ if __name__ == "__main__":
             state = next_state.detach()
 
             episode_price += market.prices.mean().item()
+
+            # Collect data for this timestep
+            episode_prices += market.prices[0]  # Using first batch item
+            episode_dispatch_0 += market.g_i[0]  # Strategic producer dispatch
+
+            # Get dispatch for non-strategic producers from market
+            # We need to modify the market class to expose this data
+            if hasattr(market, 'all_generator_dispatch'):
+                episode_dispatch_1 += market.all_generator_dispatch[0][1]  # Producer 1
+                episode_dispatch_2 += market.all_generator_dispatch[0][2]  # Producer 2
+
+            timestep_count += 1
 
             if timestep == len(timesteps) // 2:
                 wandb.log({
@@ -198,6 +242,41 @@ if __name__ == "__main__":
                     },
                         step=episode)
 
+        # Average the data over timesteps
+        episode_prices /= timestep_count
+        episode_dispatch_0 /= timestep_count
+        episode_dispatch_1 /= timestep_count
+        episode_dispatch_2 /= timestep_count
+
+        # Store in the current batch tensor
+        batch_idx = episode_counter % SAVE_FREQUENCY
+        episode_data_batch[batch_idx, :, 0] = episode_prices
+        episode_data_batch[batch_idx, :, 1] = episode_dispatch_0
+        episode_data_batch[batch_idx, :, 2] = episode_dispatch_1
+        episode_data_batch[batch_idx, :, 3] = episode_dispatch_2
+
+        episode_counter += 1
+
+        # Check if it's time to save the current batch
+        if episode_counter % SAVE_FREQUENCY == 0 or episode == market.num_episodes - 1:
+            # If this is the last episode and not a complete batch, trim the tensor
+            if episode == market.num_episodes - 1 and episode_counter % SAVE_FREQUENCY != 0:
+                last_batch_size = episode_counter % SAVE_FREQUENCY
+                current_batch = episode_data_batch[:last_batch_size]
+            else:
+                current_batch = episode_data_batch
+
+            # Concatenate with existing data and save
+            updated_data = torch.cat([existing_data, current_batch], dim=0)
+            torch.save(updated_data, output_file)
+            print(f"Updated data file with shape: {updated_data.shape}")
+
+            # Update existing data reference
+            existing_data = updated_data
+
+            # Reset the batch tensor for the next set of episodes
+            episode_data_batch = torch.zeros((SAVE_FREQUENCY, market.num_hours, 4))
+
         wandb.log({
             "episode_reward": episode_reward,
             "episode_price": episode_price / len(timesteps),
@@ -209,3 +288,5 @@ if __name__ == "__main__":
         max_reward_so_far = max(max_reward_so_far, episode_reward)
         print(
             f"Episode {episode}, Reward: {episode_reward:.2f}, Max Reward: {max_reward_so_far:.2f}, Noise: {current_noise_scale:.4f}")
+
+    print(f"Final data saved with shape: {existing_data.shape}")
