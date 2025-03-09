@@ -5,6 +5,7 @@ import wandb
 import numpy as np
 from collections import deque
 
+from rl_power_markets.benchmarks.markets.full_market_linear import FullSimpleMarket
 from rl_power_markets.model.agent import Critic, Actor
 from rl_power_markets.benchmarks.markets.simple import SimpleMarket
 
@@ -29,18 +30,18 @@ def initialize_wandb() -> None:
 
 
 # Hyperparameters
-LR_ACTOR = 0.000001
-LR_CRITIC = 0.01
+LR_ACTOR = 0.00001
+LR_CRITIC = 0.001
 GAMMA = 0.7
 TAU = 0.005
 BUFFER_SIZE = 100000
-BATCH_SIZE = 64
+BATCH_SIZE = 8
 ACTOR_HIDDEN_SIZE = 256
 CRITIC_HIDDEN_SIZE = 256
 # Noise parameters
-NOISE_MAX_SCALE = 0.1       # Maximum noise amplitude
-NOISE_MIN_SCALE = 0.01      # Minimum noise amplitude
-NOISE_PERIOD = 20           # Number of episodes for a complete cycle
+NOISE_MAX_SCALE = 1       # Maximum noise amplitude
+NOISE_MIN_SCALE = 0.0001      # Minimum noise amplitude
+NOISE_PERIOD = 40           # Number of episodes for a complete cycle
 NOISE_PHASE_SHIFT = 0       # Phase shift in radians
 
 
@@ -86,7 +87,7 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "mps")
     initialize_wandb()
 
-    market = SimpleMarket()
+    market = FullSimpleMarket(BATCH_SIZE)
     episodes = market.episodes
     timesteps = market.timesteps
 
