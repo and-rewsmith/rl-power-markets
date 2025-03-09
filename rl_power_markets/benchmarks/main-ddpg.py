@@ -5,6 +5,7 @@ import wandb
 import numpy as np
 from collections import deque
 
+from rl_power_markets.benchmarks.markets.full_market_linear import FullSimpleMarket
 from rl_power_markets.model.agent import Critic, Actor
 from rl_power_markets.benchmarks.markets.simple import SimpleMarket
 
@@ -34,7 +35,7 @@ LR_CRITIC = 0.0001
 GAMMA = 0.7
 TAU = 0.005
 BUFFER_SIZE = 100000
-BATCH_SIZE = 64
+BATCH_SIZE = 4
 ACTOR_HIDDEN_SIZE = 256
 CRITIC_HIDDEN_SIZE = 256
 
@@ -81,7 +82,7 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "mps")
     initialize_wandb()
 
-    market = SimpleMarket()
+    market = FullSimpleMarket(BATCH_SIZE)
     episodes = market.episodes
     timesteps = market.timesteps
 
@@ -100,15 +101,19 @@ if __name__ == "__main__":
     replay_buffer = ReplayBuffer(market)
     max_reward_so_far = float('-inf')
 
+    episode_counter = 0
     for episode in episodes:
         market.reset()
         state = market.obtain_state()
         episode_reward: float = 0
+        episode_price: float = 0
+
+        episode_counter += 1
 
         for timestep in timesteps:
             # Get action and add exploration noise
             action = actor(state)
-            noise = torch.normal(0, 0.1, size=action.shape)
+            noise = torch.normal(-1, 1, size=action.shape)
             action = torch.clamp(action + noise, min=1.0)  # Ensure multiplier >= 1.0
             assert action.shape == (market.batch_size, market.num_actions)
 
@@ -122,8 +127,14 @@ if __name__ == "__main__":
             episode_reward += reward.mean().item()
             state = next_state.detach()
 
+            episode_price += market.prices.mean().item()
+
             wandb.log({
-                "episode_reward": episode_reward,
+                "timestep_prices": market.prices.mean().item(),
+                "timestep_bidding multiplier": action.mean().item(),
+                "timestep_average_ui_status": market.u_i.mean().item(),
+                "timestep_average_gi_status": market.g_i.mean().item(),
+                "timestep_action": action[0].mean().item(),
             })
 
             # Train if enough samples
@@ -165,9 +176,15 @@ if __name__ == "__main__":
                 wandb.log({
                     "critic_loss": critic_loss.item(),
                     "actor_loss": actor_loss.item(),
-                    "train_q_value": current_q.mean().item(),
-                    "train_reward": rewards.mean().item(),
+                    "q_value": current_q.mean().item(),
+                    "reward": rewards.mean().item(),
                 })
+
+        wandb.log({
+            "episode_reward": episode_reward,
+            "episode_price": episode_price / len(timesteps),
+            "episode_counter": episode_counter,
+        })
 
         max_reward_so_far = max(max_reward_so_far, episode_reward)
         print(f"Episode {episode}, Reward: {episode_reward:.2f}, Max Reward: {max_reward_so_far:.2f}")

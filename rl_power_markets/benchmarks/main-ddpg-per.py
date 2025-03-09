@@ -5,6 +5,7 @@ import wandb
 import numpy as np
 from collections import deque
 
+from rl_power_markets.benchmarks.markets.full_market_linear import FullSimpleMarket
 from rl_power_markets.model.agent import Critic, Actor
 from rl_power_markets.benchmarks.markets.simple import SimpleMarket
 
@@ -26,21 +27,28 @@ def initialize_wandb() -> None:
             "gamma": GAMMA,
             "beta1": BETA1,
             "beta2": BETA2,
+            "noise_initial": NOISE_INITIAL,
+            "noise_min": NOISE_MIN,
+            "noise_decay": NOISE_DECAY,
         }
     )
 
 
 # Hyperparameters
-LR_ACTOR = 0.000001
+LR_ACTOR = 0.00001
 LR_CRITIC = 0.0001
 GAMMA = 0.7
 TAU = 0.005
 BUFFER_SIZE = 100000
-BATCH_SIZE = 64
+BATCH_SIZE = 8
 ACTOR_HIDDEN_SIZE = 256
 CRITIC_HIDDEN_SIZE = 256
 BETA1 = 0.6
 BETA2 = 0.4
+# Add noise decay parameters
+NOISE_INITIAL = 0.8
+NOISE_MIN = 0.00005
+NOISE_DECAY = 0.995  # Decay factor per episode
 
 
 class PrioritizedReplayBuffer:
@@ -115,7 +123,7 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "mps")
     initialize_wandb()
 
-    market = SimpleMarket()
+    market = SimpleMarket(batch_size=BATCH_SIZE)
     episodes = market.episodes
     timesteps = market.timesteps
 
@@ -134,15 +142,21 @@ if __name__ == "__main__":
     replay_buffer = PrioritizedReplayBuffer(market)
     max_reward_so_far = float('-inf')
 
+    # Initialize noise scale
+    noise_scale = NOISE_INITIAL
+
+    episode_counter = 0
     for episode in episodes:
         market.reset()
         state = market.obtain_state()
         episode_reward: float = 0
+        episode_price: float = 0
+        episode_counter += 1
 
         for timestep in timesteps:
-            # Get action and add exploration noise
+            # Get action and add exploration noise with decaying scale
             action = actor(state)
-            noise = torch.normal(0, 0.1, size=action.shape)
+            noise = torch.normal(0, noise_scale, size=action.shape)
             action = torch.clamp(action + noise, min=1.0)  # Ensure multiplier >= 1.0
             assert action.shape == (market.batch_size, market.num_actions)
 
@@ -154,10 +168,16 @@ if __name__ == "__main__":
             # Store transition
             replay_buffer.add(state, action, reward, next_state)
             episode_reward += reward.mean().item()
+            episode_price += market.prices.mean().item()
             state = next_state.detach()
 
+            # Added detailed timestep logging
             wandb.log({
-                "episode_reward": episode_reward,
+                "timestep_prices": market.prices.mean().item(),
+                "timestep_bidding multiplier": action.mean().item(),
+                "timestep_average_ui_status": market.u_i.mean().item(),
+                "timestep_average_gi_status": market.g_i.mean().item(),
+                "noise_scale": noise_scale,
             })
 
             # Train if enough samples
@@ -172,11 +192,15 @@ if __name__ == "__main__":
                     target_value = rewards + GAMMA * target_q
                 assert target_value.shape == (BATCH_SIZE, 1)
 
-                # Update critic (changed to use importance sampling weights)
-                current_q = critic(states.detach(), actions.detach())
+                # Update critic (changed to use importance sampling weights and match TD error calculation)
+                critic_output = critic(states.detach(), actions.detach())
+                current_q = critic_output
                 td_errors = (target_value.detach() - current_q).detach().numpy()
-                critic_loss = (weights * torch.nn.functional.mse_loss(current_q,
-                               target_value.detach(), reduction='none')).mean()
+
+                # Calculate TD error and critic loss similar to main-ddpg.py
+                td_error = target_value - current_q
+                critic_loss = weights * (td_error ** 2)
+                critic_loss = critic_loss.mean()
 
                 optimizer_critic.zero_grad()
                 critic_loss.backward()
@@ -199,13 +223,25 @@ if __name__ == "__main__":
                 soft_update(critic_target, critic, TAU)
                 soft_update(actor_target, actor, TAU)
 
-                # Logging
+                # Logging - updated to match main-ddpg.py exactly
                 wandb.log({
                     "critic_loss": critic_loss.item(),
                     "actor_loss": actor_loss.item(),
-                    "train_q_value": current_q.mean().item(),
-                    "train_reward": rewards.mean().item(),
+                    "q_value": current_q.mean().item(),
+                    "reward": rewards.mean().item(),
+                    "td_error": td_error.mean().item(),
+                    "critic_output": critic_output.mean().item(),
                 })
 
+        # Decay noise after each episode
+        noise_scale = max(NOISE_MIN, noise_scale * NOISE_DECAY)
+
+        # Episode-level logging
+        wandb.log({
+            "episode_reward": episode_reward / len(timesteps),
+            "episode_price": episode_price / len(timesteps),
+            "episode_counter": episode_counter,
+            "noise_scale": noise_scale,
+        })
         max_reward_so_far = max(max_reward_so_far, episode_reward)
-        print(f"Episode {episode}, Reward: {episode_reward:.2f}, Max Reward: {max_reward_so_far:.2f}")
+        print(f"Episode {episode}, Reward: {episode_reward:.2f}, Max Reward: {max_reward_so_far:.2f}, Noise: {noise_scale:.4f}")
