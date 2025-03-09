@@ -112,7 +112,7 @@ if __name__ == "__main__":
         for timestep in timesteps:
             # Get action and add exploration noise
             action = actor(state)
-            noise = torch.normal(0, 0.1, size=action.shape)
+            noise = torch.normal(-0.1, 0.1, size=action.shape)
             action = torch.clamp(action + noise, min=1.0)  # Ensure multiplier >= 1.0
             assert action.shape == (market.batch_size, market.num_actions)
 
@@ -154,7 +154,7 @@ if __name__ == "__main__":
 
                 optimizer_critic.zero_grad()
                 critic_loss.backward()
-                torch.nn.utils.clip_grad_norm_(critic.parameters(), max_norm=1.0)
+                # torch.nn.utils.clip_grad_norm_(critic.parameters(), max_norm=1.0)
                 optimizer_critic.step()
 
                 # Update actor
@@ -163,7 +163,7 @@ if __name__ == "__main__":
 
                 optimizer_actor.zero_grad()
                 actor_loss.backward()
-                torch.nn.utils.clip_grad_norm_(actor.parameters(), max_norm=1.0)
+                # torch.nn.utils.clip_grad_norm_(actor.parameters(), max_norm=1.0)
                 optimizer_actor.step()
 
                 # Soft update targets
