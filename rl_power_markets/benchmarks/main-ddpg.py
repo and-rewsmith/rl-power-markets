@@ -5,6 +5,7 @@ import wandb
 import numpy as np
 from collections import deque
 
+from rl_power_markets.benchmarks.markets.full_market_linear import FullSimpleMarket
 from rl_power_markets.model.agent import Critic, Actor
 from rl_power_markets.benchmarks.markets.simple import SimpleMarket
 
@@ -34,7 +35,7 @@ LR_CRITIC = 0.0001
 GAMMA = 0.7
 TAU = 0.005
 BUFFER_SIZE = 100000
-BATCH_SIZE = 64
+BATCH_SIZE = 4
 ACTOR_HIDDEN_SIZE = 256
 CRITIC_HIDDEN_SIZE = 256
 
@@ -81,7 +82,7 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "mps")
     initialize_wandb()
 
-    market = SimpleMarket()
+    market = FullSimpleMarket(BATCH_SIZE)
     episodes = market.episodes
     timesteps = market.timesteps
 
@@ -112,7 +113,7 @@ if __name__ == "__main__":
         for timestep in timesteps:
             # Get action and add exploration noise
             action = actor(state)
-            noise = torch.normal(0, 0.1, size=action.shape)
+            noise = torch.normal(-1, 1, size=action.shape)
             action = torch.clamp(action + noise, min=1.0)  # Ensure multiplier >= 1.0
             assert action.shape == (market.batch_size, market.num_actions)
 
@@ -133,6 +134,7 @@ if __name__ == "__main__":
                 "timestep_bidding multiplier": action.mean().item(),
                 "timestep_average_ui_status": market.u_i.mean().item(),
                 "timestep_average_gi_status": market.g_i.mean().item(),
+                "timestep_action": action[0].mean().item(),
             })
 
             # Train if enough samples
