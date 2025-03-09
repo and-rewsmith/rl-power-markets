@@ -26,6 +26,9 @@ def initialize_wandb() -> None:
             "buffer_size": BUFFER_SIZE,
             "tau": TAU,
             "gamma": GAMMA,
+            "noise_initial": NOISE_INITIAL,
+            "noise_min": NOISE_MIN,
+            "noise_decay": NOISE_DECAY,
         }
     )
 
@@ -39,6 +42,10 @@ BUFFER_SIZE = 100000
 BATCH_SIZE = 8
 ACTOR_HIDDEN_SIZE = 256
 CRITIC_HIDDEN_SIZE = 256
+# Add noise decay parameters
+NOISE_INITIAL = 0.2
+NOISE_MIN = 0.0005
+NOISE_DECAY = 0.95  # Decay factor per episode
 
 
 class ReplayBuffer:
@@ -102,6 +109,9 @@ if __name__ == "__main__":
     replay_buffer = ReplayBuffer(market)
     max_reward_so_far = float('-inf')
 
+    # Initialize noise scale
+    noise_scale = NOISE_INITIAL
+
     episode_counter = 0
     for episode in episodes:
         market.reset()
@@ -111,10 +121,12 @@ if __name__ == "__main__":
         episode_counter += 1
 
         for timestep in timesteps:
-            # Get action and add exploration noise
+            # Get action and add exploration noise with decaying scale
             action = actor(state)
-            noise = torch.normal(0, 0.2, size=action.shape)
+            noise = torch.normal(0, noise_scale, size=action.shape)
             action = torch.clamp(action + noise, min=1.0)  # Ensure multiplier >= 1.0
+            if timestep == len(timesteps)//2:
+                print(action[0])
             assert action.shape == (market.batch_size, market.num_actions)
 
             # Step environment
@@ -133,6 +145,7 @@ if __name__ == "__main__":
                 "timestep_bidding multiplier": action.mean().item(),
                 "timestep_average_ui_status": market.u_i.mean().item(),
                 "timestep_average_gi_status": market.g_i.mean().item(),
+                "noise_scale": noise_scale,
             })
 
             # Train if enough samples
@@ -184,10 +197,14 @@ if __name__ == "__main__":
                     "critic_output": critic_output.mean().item(),
                 })
 
+        # Decay noise after each episode
+        noise_scale = max(NOISE_MIN, noise_scale * NOISE_DECAY)
+
         wandb.log({
             "episode_reward": episode_reward / len(timesteps),
             "episode_price": episode_price / len(timesteps),
             "episode_counter": episode_counter,
+            "noise_scale": noise_scale,
         })
         max_reward_so_far = max(max_reward_so_far, episode_reward)
-        print(f"Episode {episode}, Reward: {episode_reward:.2f}, Max Reward: {max_reward_so_far:.2f}")
+        print(f"Episode {episode}, Reward: {episode_reward:.2f}, Max Reward: {max_reward_so_far:.2f}, Noise: {noise_scale:.4f}")
