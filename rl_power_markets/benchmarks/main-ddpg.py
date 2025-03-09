@@ -102,10 +102,13 @@ if __name__ == "__main__":
     replay_buffer = ReplayBuffer(market)
     max_reward_so_far = float('-inf')
 
+    episode_counter = 0
     for episode in episodes:
         market.reset()
         state = market.obtain_state()
         episode_reward: float = 0
+        episode_price: float = 0
+        episode_counter += 1
 
         for timestep in timesteps:
             # Get action and add exploration noise
@@ -122,14 +125,14 @@ if __name__ == "__main__":
             # Store transition
             replay_buffer.add(state, action, reward, next_state)
             episode_reward += reward.mean().item()
+            episode_price += market.prices.mean().item()
             state = next_state.detach()
 
             wandb.log({
-                "episode_reward": episode_reward,
-                "average_prices": market.prices.mean().item(),
-                "bidding multiplier": action.mean().item(),
-                "average_ui_status": market.u_i.mean().item(),
-                "average_gi_status": market.g_i.mean().item(),
+                "timestep_prices": market.prices.mean().item(),
+                "timestep_bidding multiplier": action.mean().item(),
+                "timestep_average_ui_status": market.u_i.mean().item(),
+                "timestep_average_gi_status": market.g_i.mean().item(),
             })
 
             # Train if enough samples
@@ -175,11 +178,16 @@ if __name__ == "__main__":
                 wandb.log({
                     "critic_loss": critic_loss.item(),
                     "actor_loss": actor_loss.item(),
-                    "train_q_value": current_q.mean().item(),
-                    "train_reward": rewards.mean().item(),
+                    "q_value": current_q.mean().item(),
+                    "reward": rewards.mean().item(),
                     "td_error": td_error.mean().item(),
                     "critic_output": critic_output.mean().item(),
                 })
 
+        wandb.log({
+            "episode_reward": episode_reward / len(timesteps),
+            "episode_price": episode_price / len(timesteps),
+            "episode_counter": episode_counter,
+        })
         max_reward_so_far = max(max_reward_so_far, episode_reward)
         print(f"Episode {episode}, Reward: {episode_reward:.2f}, Max Reward: {max_reward_so_far:.2f}")
