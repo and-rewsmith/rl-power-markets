@@ -12,9 +12,9 @@ class Critic(nn.Module):
         super().__init__()
         self.net = nn.Sequential(
             nn.Linear(obs_size, hidden_size),
-            nn.ReLU(),
+            nn.LeakyReLU(),
             nn.Linear(hidden_size, hidden_size),
-            nn.ReLU(),
+            nn.LeakyReLU(),
             nn.Linear(hidden_size, 1)
         )
 
@@ -29,14 +29,14 @@ class Actor(nn.Module):
         super().__init__()
         self.net = nn.Sequential(
             nn.Linear(obs_size, hidden_size),
-            nn.ReLU(),
+            nn.LeakyReLU(),
             nn.Linear(hidden_size, hidden_size),
-            nn.ReLU(),
+            nn.LeakyReLU(),
             nn.Linear(hidden_size, num_actions),
             nn.Softsign()  # squash this so nonneg
         )
         self.vertical_scaling_factor = 1
-        self.horizontal_scaling_factor = 1
+        self.horizontal_scaling_factor = 100
         self.vertical_shift = 2
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:

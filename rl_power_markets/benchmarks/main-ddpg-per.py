@@ -35,7 +35,7 @@ def initialize_wandb() -> None:
 
 
 # Hyperparameters
-LR_ACTOR = 0.0001
+LR_ACTOR = 0.00001
 LR_CRITIC = 0.0001
 GAMMA = 0.7
 TAU = 0.005
@@ -46,9 +46,9 @@ CRITIC_HIDDEN_SIZE = 256
 BETA1 = 0.6
 BETA2 = 0.4
 # Add noise decay parameters
-NOISE_INITIAL = 0.2
-NOISE_MIN = 0.0005
-NOISE_DECAY = 0.94  # Decay factor per episode
+NOISE_INITIAL = 0.8
+NOISE_MIN = 0.00005
+NOISE_DECAY = 0.995  # Decay factor per episode
 
 
 class PrioritizedReplayBuffer:
@@ -123,7 +123,7 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "mps")
     initialize_wandb()
 
-    market = FullSimpleMarket(batch_size=BATCH_SIZE)
+    market = SimpleMarket(batch_size=BATCH_SIZE)
     episodes = market.episodes
     timesteps = market.timesteps
 
