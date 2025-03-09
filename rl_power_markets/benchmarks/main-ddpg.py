@@ -37,6 +37,11 @@ BUFFER_SIZE = 100000
 BATCH_SIZE = 64
 ACTOR_HIDDEN_SIZE = 256
 CRITIC_HIDDEN_SIZE = 256
+# Noise parameters
+NOISE_MAX_SCALE = 0.1       # Maximum noise amplitude
+NOISE_MIN_SCALE = 0.01      # Minimum noise amplitude
+NOISE_PERIOD = 20           # Number of episodes for a complete cycle
+NOISE_PHASE_SHIFT = 0       # Phase shift in radians
 
 
 class ReplayBuffer:
@@ -100,8 +105,17 @@ if __name__ == "__main__":
     replay_buffer = ReplayBuffer(market)
     max_reward_so_far = float('-inf')
 
+    # Initialize noise scale
+    current_noise_scale = NOISE_MAX_SCALE
+
     episode_counter = 0
     for episode in episodes:
+        # Calculate sinusoidal noise scale
+        # sin oscillates between -1 and 1, so we adjust to get values between NOISE_MIN_SCALE and NOISE_MAX_SCALE
+        current_noise_scale = NOISE_MIN_SCALE + (NOISE_MAX_SCALE - NOISE_MIN_SCALE) * (
+            (np.sin(2 * np.pi * episode_counter / NOISE_PERIOD + NOISE_PHASE_SHIFT) + 1) / 2
+        )
+
         market.reset()
         state = market.obtain_state()
         episode_reward: float = 0
@@ -110,9 +124,9 @@ if __name__ == "__main__":
         episode_counter += 1
 
         for timestep in timesteps:
-            # Get action and add exploration noise
+            # Get action and add exploration noise with decaying scale
             action = actor(state)
-            noise = torch.normal(-0.1, 0.1, size=action.shape)
+            noise = torch.normal(-current_noise_scale, current_noise_scale, size=action.shape)
             action = torch.clamp(action + noise, min=1.0)  # Ensure multiplier >= 1.0
             assert action.shape == (market.batch_size, market.num_actions)
 
@@ -134,6 +148,7 @@ if __name__ == "__main__":
                     "timestep_bidding multiplier": action.mean().item(),
                     "timestep_average_ui_status": market.u_i.mean().item(),
                     "timestep_average_gi_status": market.g_i.mean().item(),
+                    "current_noise_scale": current_noise_scale,  # Log the current noise scale
                 },
                     step=episode)
 
@@ -186,8 +201,10 @@ if __name__ == "__main__":
             "episode_reward": episode_reward,
             "episode_price": episode_price / len(timesteps),
             "episode_counter": episode_counter,
+            "noise_scale": current_noise_scale,  # Log the noise scale
         },
             step=episode)
 
         max_reward_so_far = max(max_reward_so_far, episode_reward)
-        print(f"Episode {episode}, Reward: {episode_reward:.2f}, Max Reward: {max_reward_so_far:.2f}")
+        print(
+            f"Episode {episode}, Reward: {episode_reward:.2f}, Max Reward: {max_reward_so_far:.2f}, Noise: {current_noise_scale:.4f}")
