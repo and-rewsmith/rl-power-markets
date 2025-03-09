@@ -8,18 +8,40 @@ class FullSimpleMarket:
         self.batch_size = batch_size
         self.num_hours = 10
 
-        # Define a small number of generators with variable costs and startup/shutdown costs
+        # Original generator parameters (commented out)
         self.generators = {
             0: {"g_min": 100, "g_max": 500, "CSU": 1000.0, "CSD": 500.0, "u0": 1, "var_cost": 20.0},
             1: {"g_min": 200, "g_max": 600, "CSU": 1500.0, "CSD": 750.0, "u0": 0, "var_cost": 30.0},
             2: {"g_min": 150, "g_max": 550, "CSU": 1200.0, "CSD": 600.0, "u0": 0, "var_cost": 25.0},
         }
 
-        # Simple demand profile
+        # Modified generator parameters for competitive bidding scenario
+        # Strategic generator (0): Lower variable cost, moderate capacity, lower startup costs
+        # Non-strategic generators: Higher costs, varied capacities
+        # self.generators = {
+        #     0: {"g_min": 150, "g_max": 400, "CSU": 800.0, "CSD": 400.0, "u0": 1, "var_cost": 15.0},
+        #     1: {"g_min": 200, "g_max": 600, "CSU": 1500.0, "CSD": 750.0, "u0": 0, "var_cost": 30.0},
+        #     2: {"g_min": 100, "g_max": 300, "CSU": 1200.0, "CSD": 600.0, "u0": 0, "var_cost": 40.0},
+        # }
+
+        # Original demand profile (commented out)
         self.demand_profile = torch.tensor([
             300, 280, 260, 250, 270, 320, 400, 450, 480, 500, 520, 530,
             510, 490, 470, 450, 430, 420, 410, 400, 390, 380, 370, 360
         ])
+
+        # # Modified demand profile - creates tight supply conditions
+        # # Peak demand approaches total capacity (1300 MW)
+        # self.demand_profile = torch.tensor([
+        #     600, 550, 500, 480, 520, 650, 800, 950, 1050, 1150, 1200, 1250,
+        #     1200, 1100, 1000, 900, 850, 800, 750, 700, 650, 630, 610, 590
+        # ])
+
+        # Note: The strategic generator can now influence prices more effectively because:
+        # 1. It has lower variable costs, making it competitive in most hours
+        # 2. The demand profile creates tight supply conditions during peak hours
+        # 3. Lower startup/shutdown costs allow more flexible commitment decisions
+        # 4. Its capacity is positioned to make it a price-setter in many periods
 
         self.num_actions = self.num_hours  # one multiplier per hour
         self.obs_size = self.num_hours * 3  # u_i, g_i, and prices for each hour

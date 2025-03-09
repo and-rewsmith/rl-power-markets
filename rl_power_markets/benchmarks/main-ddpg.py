@@ -30,16 +30,16 @@ def initialize_wandb() -> None:
     )
 
 
-# BATCH_SIZE = 8
+BATCH_SIZE = 8
 # LR_ACTOR = 0.00001
 # LR_CRITIC = 0.001
 NOISE_MAX_SCALE = 1       # Maximum noise amplitude
 
 
-BATCH_SIZE = 64
+# BATCH_SIZE = 64
 LR_ACTOR = 0.000001
 LR_CRITIC = 0.01
-NOISE_MAX_SCALE = 0.1       # Maximum noise amplitude
+# NOISE_MAX_SCALE = 0.1       # Maximum noise amplitude
 
 # Hyperparameters
 NOISE_MIN_SCALE = 0.0001      # Minimum noise amplitude
@@ -96,7 +96,7 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "mps")
     initialize_wandb()
 
-    market = SimpleMarket(BATCH_SIZE)
+    market = FullSimpleMarket(BATCH_SIZE)
     episodes = market.episodes
     timesteps = market.timesteps
 
