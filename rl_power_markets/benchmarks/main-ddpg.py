@@ -128,12 +128,14 @@ if __name__ == "__main__":
 
             episode_price += market.prices.mean().item()
 
-            wandb.log({
-                "timestep_prices": market.prices.mean().item(),
-                "timestep_bidding multiplier": action.mean().item(),
-                "timestep_average_ui_status": market.u_i.mean().item(),
-                "timestep_average_gi_status": market.g_i.mean().item(),
-            })
+            if timestep == len(timesteps) // 2:
+                wandb.log({
+                    "timestep_prices": market.prices.mean().item(),
+                    "timestep_bidding multiplier": action.mean().item(),
+                    "timestep_average_ui_status": market.u_i.mean().item(),
+                    "timestep_average_gi_status": market.g_i.mean().item(),
+                },
+                    step=episode)
 
             # Train if enough samples
             if len(replay_buffer.buffer) > BATCH_SIZE:
@@ -171,18 +173,21 @@ if __name__ == "__main__":
                 soft_update(actor_target, actor, TAU)
 
                 # Logging
-                wandb.log({
-                    "critic_loss": critic_loss.item(),
-                    "actor_loss": actor_loss.item(),
-                    "q_value": current_q.mean().item(),
-                    "reward": rewards.mean().item(),
-                })
+                if timestep == len(timesteps) // 2:
+                    wandb.log({
+                        "critic_loss": critic_loss.item(),
+                        "actor_loss": actor_loss.item(),
+                        "q_value": current_q.mean().item(),
+                        "reward": rewards.mean().item(),
+                    },
+                        step=episode)
 
         wandb.log({
             "episode_reward": episode_reward,
             "episode_price": episode_price / len(timesteps),
             "episode_counter": episode_counter,
-        })
+        },
+            step=episode)
 
         max_reward_so_far = max(max_reward_so_far, episode_reward)
         print(f"Episode {episode}, Reward: {episode_reward:.2f}, Max Reward: {max_reward_so_far:.2f}")
