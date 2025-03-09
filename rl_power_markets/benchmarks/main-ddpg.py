@@ -34,12 +34,12 @@ def initialize_wandb() -> None:
 
 
 # Hyperparameters
-LR_ACTOR = 0.001
-LR_CRITIC = 0.001
+LR_ACTOR = 0.00001
+LR_CRITIC = 0.0001
 GAMMA = 0.7
 TAU = 0.005
 BUFFER_SIZE = 100000
-BATCH_SIZE = 8
+BATCH_SIZE = 64
 ACTOR_HIDDEN_SIZE = 256
 CRITIC_HIDDEN_SIZE = 256
 # Add noise decay parameters
@@ -90,7 +90,7 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "mps")
     initialize_wandb()
 
-    market = FullSimpleMarket(batch_size=BATCH_SIZE)
+    market = SimpleMarket(batch_size=BATCH_SIZE)
     episodes = market.episodes
     timesteps = market.timesteps
 
