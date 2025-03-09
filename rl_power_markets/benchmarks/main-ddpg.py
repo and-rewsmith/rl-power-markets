@@ -30,7 +30,7 @@ def initialize_wandb() -> None:
 
 # Hyperparameters
 LR_ACTOR = 0.000001
-LR_CRITIC = 0.0001
+LR_CRITIC = 0.01
 GAMMA = 0.7
 TAU = 0.005
 BUFFER_SIZE = 100000
