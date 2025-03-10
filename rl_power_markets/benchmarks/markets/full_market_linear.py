@@ -6,13 +6,13 @@ import numpy as np
 class FullSimpleMarket:
     def __init__(self, batch_size) -> None:
         self.batch_size = batch_size
-        self.num_hours = 10
+        self.num_hours = 24
 
         # Original generator parameters (commented out)
         self.generators = {
             0: {"g_min": 100, "g_max": 500, "CSU": 1000.0, "CSD": 500.0, "u0": 1, "var_cost": 20.0},
-            1: {"g_min": 200, "g_max": 600, "CSU": 1500.0, "CSD": 750.0, "u0": 0, "var_cost": 30.0},
-            2: {"g_min": 150, "g_max": 550, "CSU": 1200.0, "CSD": 600.0, "u0": 0, "var_cost": 25.0},
+            1: {"g_min": 200, "g_max": 600, "CSU": 1500.0, "CSD": 750.0, "u0": 0, "var_cost": 60.0},
+            2: {"g_min": 150, "g_max": 550, "CSU": 1200.0, "CSD": 600.0, "u0": 0, "var_cost": 60.0},
         }
 
         # Modified generator parameters for competitive bidding scenario

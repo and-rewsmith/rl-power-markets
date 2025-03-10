@@ -33,7 +33,7 @@ def initialize_wandb() -> None:
 BATCH_SIZE = 8
 # LR_ACTOR = 0.00001
 # LR_CRITIC = 0.001
-NOISE_MAX_SCALE = 1       # Maximum noise amplitude
+NOISE_MAX_SCALE = 0.1       # Maximum noise amplitude
 
 
 # BATCH_SIZE = 64
