@@ -37,7 +37,7 @@ NOISE_MAX_SCALE = 0.1       # Maximum noise amplitude
 
 
 # BATCH_SIZE = 64
-LR_ACTOR = 0.000001
+LR_ACTOR = 0.0001
 LR_CRITIC = 0.01
 # NOISE_MAX_SCALE = 0.1       # Maximum noise amplitude
 
@@ -51,7 +51,7 @@ CRITIC_HIDDEN_SIZE = 256
 # Noise parameters
 NOISE_PERIOD = 40           # Number of episodes for a complete cycle
 NOISE_PHASE_SHIFT = 0       # Phase shift in radians
-SAVE_FREQUENCY = 100
+SAVE_FREQUENCY = 25
 
 
 class ReplayBuffer:
@@ -101,8 +101,8 @@ if __name__ == "__main__":
     timesteps = market.timesteps
 
     # Create a tensor to store data for a batch of episodes
-    # Shape: (SAVE_FREQUENCY, num_hours, 4)
-    episode_data_batch = torch.zeros((SAVE_FREQUENCY, market.num_hours, 4))
+    # Shape: (SAVE_FREQUENCY, num_hours, 5) - Now including strategic producer's bid
+    episode_data_batch = torch.zeros((SAVE_FREQUENCY, market.num_hours, 5))
 
     # Output file name
     output_file = 'episode_data.pt'
@@ -113,7 +113,7 @@ if __name__ == "__main__":
         print(f"Deleted existing data file: {output_file}")
 
     # Initialize with empty data
-    existing_data = torch.zeros((0, market.num_hours, 4))
+    existing_data = torch.zeros((0, market.num_hours, 5))
     episodes_saved = 0
     print("Starting fresh with new data file")
 
@@ -154,6 +154,7 @@ if __name__ == "__main__":
         episode_dispatch_0 = torch.zeros(market.num_hours)
         episode_dispatch_1 = torch.zeros(market.num_hours)
         episode_dispatch_2 = torch.zeros(market.num_hours)
+        episode_bids_0 = torch.zeros(market.num_hours)  # Strategic producer's bids
         timestep_count = 0
 
         for timestep in timesteps:
@@ -178,6 +179,12 @@ if __name__ == "__main__":
             # Collect data for this timestep
             episode_prices += market.prices[0]  # Using first batch item
             episode_dispatch_0 += market.g_i[0]  # Strategic producer dispatch
+
+            # Calculate and store the strategic producer's bid
+            # Bid = base cost * multiplier (k_factor)
+            strategic_base_cost = market.generators[market.strategic_gen]["var_cost"]
+            strategic_bids = strategic_base_cost * action[0]  # Using first batch item
+            episode_bids_0 += strategic_bids
 
             # Get dispatch for non-strategic producers from market
             # We need to modify the market class to expose this data
@@ -247,6 +254,7 @@ if __name__ == "__main__":
         episode_dispatch_0 /= timestep_count
         episode_dispatch_1 /= timestep_count
         episode_dispatch_2 /= timestep_count
+        episode_bids_0 /= timestep_count
 
         # Store in the current batch tensor
         batch_idx = episode_counter % SAVE_FREQUENCY
@@ -254,6 +262,7 @@ if __name__ == "__main__":
         episode_data_batch[batch_idx, :, 1] = episode_dispatch_0
         episode_data_batch[batch_idx, :, 2] = episode_dispatch_1
         episode_data_batch[batch_idx, :, 3] = episode_dispatch_2
+        episode_data_batch[batch_idx, :, 4] = episode_bids_0  # Strategic producer's bids
 
         episode_counter += 1
 
@@ -275,7 +284,7 @@ if __name__ == "__main__":
             existing_data = updated_data
 
             # Reset the batch tensor for the next set of episodes
-            episode_data_batch = torch.zeros((SAVE_FREQUENCY, market.num_hours, 4))
+            episode_data_batch = torch.zeros((SAVE_FREQUENCY, market.num_hours, 5))
 
         wandb.log({
             "episode_reward": episode_reward,
